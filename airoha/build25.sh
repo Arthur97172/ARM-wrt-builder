@@ -32,30 +32,7 @@ PACKAGES=""
 PACKAGES="$PACKAGES base-files uci ubus dropbear logd mtd bash htop curl wget ca-bundle ca-certificates"
 PACKAGES="$PACKAGES dnsmasq-full firewall4 nftables kmod-nft-offload"
 PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe wpad-openssl"
-
-# [硬件驱动]
-PACKAGES="$PACKAGES kmod-mmc kmod-r8125 kmod-r8168 kmod-r8169 r8169-firmware"
-
-# [磁盘与文件系统]
-PACKAGES="$PACKAGES block-mount fdisk lsblk blkid parted resize2fs smartmontools"
-
-# [USB 网卡驱动]
-PACKAGES="$PACKAGES kmod-usb-net kmod-usb-net-rtl8150 kmod-usb-net-rtl8152 r8152-firmware"
-PACKAGES="$PACKAGES kmod-usb-net-asix-ax88179 kmod-usb-net-aqc111"
-PACKAGES="$PACKAGES kmod-usb-net-cdc-ether kmod-usb-net-cdc-ncm kmod-usb-net-cdc-mbim"
-
-# [无线驱动]
-PACKAGES="$PACKAGES kmod-usb-ohci kmod-usb-ohci-pci kmod-usb-core kmod-usb2-pci usbutils"
-PACKAGES="$PACKAGES kmod-mac80211"
-PACKAGES="$PACKAGES kmod-mt7921-common kmod-mt7921-firmware kmod-mt7921e kmod-mt7921u"
-PACKAGES="$PACKAGES kmod-mt7922-firmware kmod-mt7925-common kmod-mt7925-firmware kmod-mt7925e kmod-mt7925u"
-PACKAGES="$PACKAGES kmod-mt792x-common kmod-mt792x-usb"
-PACKAGES="$PACKAGES kmod-mt7992-23-firmware kmod-mt7992-firmware"
-PACKAGES="$PACKAGES kmod-mt7996-233-firmware kmod-mt7996-firmware kmod-mt7996-firmware-common kmod-mt7996e kmod-mtk-t7xx"
-
-# [性能插件]
-PACKAGES="$PACKAGES kmod-i2c-an7581 kmod-leds-gpio kmod-gpio-button-hotplug kmod-hwmon-core kmod-hwmon-nct7802 kmod-thermal"
-PACKAGES="$PACKAGES kmod-ipt-core kmod-ipt-ipset kmod-inet-diag"
+PACKAGES="$PACKAGES block-mount lsblk blkid kmod-usb-core kmod-usb-ehci kmod-usb-xhci kmod-usb-storage usbutils"
 
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"

@@ -53,6 +53,10 @@ PACKAGES="$PACKAGES kmod-mt792x-common kmod-mt792x-usb"
 PACKAGES="$PACKAGES kmod-mt7992-23-firmware kmod-mt7992-firmware"
 PACKAGES="$PACKAGES kmod-mt7996-233-firmware kmod-mt7996-firmware kmod-mt7996-firmware-common kmod-mt7996e kmod-mtk-t7xx"
 
+# [性能插件]
+PACKAGES="$PACKAGES kmod-i2c-an7581 kmod-leds-gpio kmod-gpio-button-hotplug kmod-hwmon-core kmod-hwmon-nct7802 kmod-thermal"
+PACKAGES="$PACKAGES kmod-ipt-core kmod-ipt-ipset kmod-inet-diag"
+
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"
 PACKAGES="$PACKAGES luci-app-cpufreq luci-i18n-cpufreq-zh-cn"

@@ -95,17 +95,7 @@ jobs:
         run: |
           BUILD_VER="${{ inputs.luci_version }}"
           WRTINFORM="${{ inputs.wrt_version }}"
-          #URL="https://downloads.${WRTINFORM}.org/releases/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-${BUILD_VER}-airoha-an7581.Linux-x86_64.tar.zst"
-          URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
-          curl -Lf -o imagebuilder.tar.zst "$URL"
-          tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
-          mv ${WRTINFORM}-imagebuilder-* imagebuilder
-
-      - name: 🔄 复制必备文件
-        run: |
-          WRTINFORM="${{ inputs.wrt_version }}"
-          BUILD_VER="${{ inputs.luci_version }}"
-
+          
           # 2. 逻辑拦截：如果选的是 immortalwrt 且版本小尾数大于 0 (即 25.12.1 及以上)
           if [ "$WRTINFORM" = "immortalwrt" ]; then
             SUB_VER=$(echo "$BUILD_VER" | cut -d'.' -f3)
@@ -117,7 +107,18 @@ jobs:
           
           # 3. 核心：将安全的目标版本和分支，写入 GitHub 全局环境变量中
           echo "FINAL_LUCI_VER=$LUCI_VER" >> $GITHUB_ENV
-          echo "FINAL_WRT=$WRTINFORM" >> $GITHUB_ENV          
+          echo "FINAL_WRT=$WRTINFORM" >> $GITHUB_ENV  
+          
+          #URL="https://downloads.${WRTINFORM}.org/releases/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-${BUILD_VER}-airoha-an7581.Linux-x86_64.tar.zst"
+          URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
+          curl -Lf -o imagebuilder.tar.zst "$URL"
+          tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
+          mv ${WRTINFORM}-imagebuilder-* imagebuilder
+
+      - name: 🔄 复制必备文件
+        run: |
+          WRTINFORM="${{ inputs.wrt_version }}"
+          BUILD_VER="${{ inputs.luci_version }}"        
           cp airoha/build25.sh imagebuilder/
           
           # 根据 WRTINFORM 的值判断复制哪个软件源文件

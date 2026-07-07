@@ -43,6 +43,7 @@ PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
 PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
 PACKAGES="$PACKAGES luci-app-wol luci-i18n-wol-zh-cn"
 PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
+PACKAGES="$PACKAGES chinadns-ng geoview xray-core sing-box luci-app-passwall luci-i18n-passwall-zh-cn"
 PACKAGES="$PACKAGES luci-app-package-manager luci-i18n-package-manager-zh-cn"
 
 # Docker 插件

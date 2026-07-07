@@ -34,13 +34,10 @@ PACKAGES="$PACKAGES dnsmasq-full firewall4 nftables kmod-nft-offload"
 PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe wpad-openssl"
 
 # [硬件驱动]
-PACKAGES="$PACKAGES -kmod-ath10k-sdio kmod-ath10k"
-PACKAGES="$PACKAGES kmod-ata-ahci kmod-mmc kmod-r8125 kmod-r8168 kmod-r8169 r8169-firmware"
+PACKAGES="$PACKAGES kmod-mmc kmod-r8125 kmod-r8168 kmod-r8169 r8169-firmware"
 
 # [磁盘与文件系统]
 PACKAGES="$PACKAGES block-mount fdisk lsblk blkid parted resize2fs smartmontools"
-PACKAGES="$PACKAGES kmod-fs-ext4 kmod-fs-vfat kmod-fs-ntfs3 kmod-fs-exfat kmod-fs-btrfs kmod-fs-f2fs"
-PACKAGES="$PACKAGES kmod-usb-storage kmod-usb-storage-uas kmod-usb2 kmod-usb3"
 
 # [USB 网卡驱动]
 PACKAGES="$PACKAGES kmod-usb-net kmod-usb-net-rtl8150 kmod-usb-net-rtl8152 r8152-firmware"
@@ -48,8 +45,6 @@ PACKAGES="$PACKAGES kmod-usb-net-asix-ax88179 kmod-usb-net-aqc111"
 PACKAGES="$PACKAGES kmod-usb-net-cdc-ether kmod-usb-net-cdc-ncm kmod-usb-net-cdc-mbim"
 
 # [无线驱动]
-PACKAGES="$PACKAGES kmod-brcmfmac kmod-brcmsmac"
-PACKAGES="$PACKAGES brcmfmac-firmware-usb brcmfmac-firmware-43430-sdio brcmfmac-firmware-43455-sdio"
 PACKAGES="$PACKAGES kmod-usb-ohci kmod-usb-ohci-pci kmod-usb-core kmod-usb2-pci usbutils"
 PACKAGES="$PACKAGES kmod-mac80211"
 PACKAGES="$PACKAGES kmod-mt7921-common kmod-mt7921-firmware kmod-mt7921e kmod-mt7921u"

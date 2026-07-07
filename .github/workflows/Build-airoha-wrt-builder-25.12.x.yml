@@ -160,7 +160,7 @@ jobs:
       - name: 🚀 上传到 Release
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: {{ inputs.wrt_version }}-${{ inputs.luci_version }}-airoha-an7581-RELEASE-Docker-${{ inputs.include_docker }}
+          tag_name: ${{ inputs.wrt_version }}-${{ inputs.luci_version }}-airoha-an7581-RELEASE-Docker-${{ inputs.include_docker }}
           body_path: ${{ github.workspace }}/router-info.md
           files: |
             imagebuilder/bin/targets/airoha/an7581/*squashfs-sysupgrade.*

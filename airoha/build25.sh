@@ -3,9 +3,6 @@
 # 在 imagebuilder 目录下运行
 # 与 OpenWrt-X86/x86/build25.sh 保持一致的 APK 签名/索引逻辑
 
-# 强制 APK 忽略内核版本不一致并继续打包
-export APK_FLAGS="--allow-untrusted --force-broken-world"
-
 # --- 接收外部参数 ---
 # 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
 PROFILE=${1:-"gemtek_w1700k-ubi"}

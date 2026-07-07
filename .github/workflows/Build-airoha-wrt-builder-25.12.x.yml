@@ -1,0 +1,169 @@
+name: 📦 Build airoha-wrt-25.12.x
+
+on:
+  workflow_dispatch:
+    inputs:
+      wrt_version:
+        description: "选择OpenWrt/Immortalwrt"
+        required: true
+        default: "immortalwrt"
+        type: choice
+        options:
+          - 'immortalwrt'
+          - 'openwrt'
+      luci_version:
+        description: "选择luci版本"
+        required: false
+        default: "snapshots"
+        type: choice
+        options:
+          - 'snapshots'
+      profile:
+        type: choice
+        description: |
+          输入 软路由型号 可选值如下：
+        options:
+          - airoha_an7581-evb
+          - gemtek_w1700k-ubi
+          - nokia_valyrian
+          - nokia_xg-040g-md
+        required: true
+        default: 'gemtek_w1700k-ubi'
+      ipaddr:
+        description: "请设置软路由的管理地址(注意仅对多网口软路由有效) 格式:192.168.x.1 或 10.x.x.1"
+        required: true
+        default: "192.168.10.1"
+      rootfs_partsize:
+        description: '设置软件包大小 单位(MB)'
+        required: true
+        default: '256'
+        type: choice
+        options:
+          - '256'
+          - '512'
+          - '1024'
+      include_docker:
+        description: "是否集成 Docker 插件"
+        required: true
+        default: "no"
+        type: choice
+        options:
+          - 'yes'
+          - 'no'
+
+env:
+  VERSION: ${{ inputs.luci_version }}
+  WRTINFORM: ${{ inputs.wrt_version }}  
+  DOCKER: ${{ inputs.include_docker }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ 设置可执行权限
+        run: |
+          chmod +x airoha/build25.sh
+          chmod +x shell/prepare-packages.sh
+          chmod +x shell/apk-custom-packages.sh
+
+      - name: 🛠️ 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-utils genisoimage
+
+      - name: ⚙️ Set custom IP config
+        run: |
+          sed -i "s/版本号/${{ inputs.luci_version }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/__IPADDR__/${{ inputs.ipaddr }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/VERXXXX/${{ inputs.luci_version }}/g" files/etc/uci-defaults/99-custom.sh
+          echo "✅ 配置修改完成"
+
+      - name: ⏬ 下载 Wrt ImageBuilder 25.12.x
+        run: |
+          BUILD_VER="${{ inputs.luci_version }}"
+          WRTINFORM="${{ inputs.wrt_version }}"
+          #URL="https://downloads.immortalwrt.org/releases/${BUILD_VER}/targets/rockchip/armv8/immortalwrt-imagebuilder-${BUILD_VER}-rockchip-armv8.Linux-x86_64.tar.zst"
+          URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
+          curl -Lf -o imagebuilder.tar.zst "$URL"
+          tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
+          mv immortalwrt-imagebuilder-* imagebuilder
+
+      - name: 🔄 复制必备文件
+        run: |
+          WRTINFORM="${{ inputs.wrt_version }}"
+          cp airoha/build25.sh imagebuilder/
+          
+          # 根据 WRTINFORM 的值判断复制哪个软件源文件
+          if [ "$WRTINFORM" = "openwrt" ]; then
+            cp airoha/openwrt_repositories imagebuilder/repositories
+          elif [ "$WRTINFORM" = "immortalwrt" ]; then
+            cp airoha/immortalwrt_repositories imagebuilder/repositories
+          else
+            echo "⚠️ 未知的 WRTINFORM 版本: $WRTINFORM，未复制软件源文件。"
+          fi
+          
+          cp shell/prepare-packages.sh imagebuilder/
+          cp shell/apk-custom-packages.sh imagebuilder/
+          mkdir -p imagebuilder/files/etc/uci-defaults imagebuilder/files/etc/apk/repositories.d
+          cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
+          # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
+          cat files/customfeeds/25.customfeeds.list >> imagebuilder/files/etc/apk/repositories.d/customfeeds.list
+          echo "✅ 文件准备完成"
+
+      - name: ⚙️ 动态获取 Kmod 哈希并更新配置
+        run: |
+          BUILD_VER="${{ inputs.luci_version }}"
+          WRTINFORM="${{ inputs.wrt_version }}"
+          #BASE_URL="https://downloads.immortalwrt.org/releases/${BUILD_VER}/targets/rockchip/armv8/kmods/"
+          BASE_URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/kmods/"
+          echo "正在从 $BASE_URL 获取最新的内核哈希..."
+          KMOD_DIR=$(curl -sL $BASE_URL | grep -oE "[0-9.-]+-[a-f0-9]{32}" | head -n 1)
+          if [ -n "$KMOD_DIR" ]; then
+            FULL_KMOD_URL="${BASE_URL}${KMOD_DIR}/packages.adb"
+            echo "✅ 成功匹配 kmods 路径: $FULL_KMOD_URL"
+            # 替换 repositories 文件中的占位符
+            sed -i "s|VERSION_PLACEHOLDER|${BUILD_VER}|g" imagebuilder/repositories
+            sed -i "s|KMOD_PLACEHOLDER|${FULL_KMOD_URL}|g" imagebuilder/repositories
+          else
+            echo "❌ 无法获取 Kmod 哈希"
+            exit 1
+          fi
+          cat imagebuilder/repositories
+
+      - name: 🧱 构建 WRT 25.12.x 固件
+        working-directory: ./imagebuilder
+        env:
+          INCLUDE_DOCKER: ${{ inputs.include_docker }}
+          ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
+        run: |
+          bash ./build25.sh "${{ inputs.profile }}" "${{ inputs.rootfs_partsize }}"
+
+      - name: 📜 生成发布说明
+        run: |
+          WRTINFORM="${{ inputs.wrt_version }}"
+          cat > ${{ github.workspace }}/router-info.md <<EOF
+          ## 📡 路由器后台信息
+          📌 版本： ${WRTINFORM}-${{ inputs.luci_version }}
+          🏠 后台地址： ${{ inputs.ipaddr }}
+          👤 用户名： root
+          🔑 密码： 无
+          🐳 Docker状态： ${{ inputs.include_docker == 'yes' && '已集成' || '未集成' }}
+          EOF
+
+      - name: 🚀 上传到 Release
+        uses: softprops/action-gh-release@v2.2.1
+        with:
+          tag_name: {{ inputs.wrt_version }}-${{ inputs.luci_version }}-airoha-an7581-RELEASE-Docker-${{ inputs.include_docker }}
+          body_path: ${{ github.workspace }}/router-info.md
+          files: |
+            imagebuilder/bin/targets/airoha/an7581/*squashfs-sysupgrade.*
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

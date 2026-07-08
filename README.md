@@ -31,18 +31,7 @@
 | ariaboard    | ariaboard_photonicat |
 | armsom    | armsom_sige3, armsom_sige7 |
 | cyber   | cyber_cyber3588-aib |
-| ezpro   | ezpro_mrkaio-m68s |
-| firefly  | firefly_roc-rk3328-cc, firefly_roc-rk3568-pc, friendlyarm_nanopc-t4, friendlyarm_nanopc-t6, friendlyarm_nanopi-r2c, friendlyarm_nanopi-r2c-plus, friendlyarm_nanopi-r2s, friendlyarm_nanopi-r3s, friendlyarm_nanopi-r4s, friendlyarm_nanopi-r4se, friendlyarm_nanopi-r4s-enterprise, friendlyarm_nanopi-r5c, friendlyarm_nanopi-r5s, friendlyarm_nanopi-r6c, friendlyarm_nanopi-r6s |
-| huake  | huake_guangmiao-g4c |
-| linkease  | linkease_easepi-r1 |
-| lunzn   | lunzn_fastrhino-r66s, lunzn_fastrhino-r68s |
-| lyt     | lyt_t68m |
-| mmbox    | mmbox_anas3035 |
-| nlnet   | nlnet_xiguapi-v3 |
-| pine64    | pine64_rock64, pine64_rockpro64 |
-| radxa   | radxa_cm3-io, radxa_e25, radxa_e25c, radxa_rock-3a, radxa_rock-3b, radxa_rock-3c, radxa_rock-4c-plus, radxa_rock-4se, radxa_rock-5-itx, radxa_rock-5a, radxa_rock-5b, radxa_rock-5b-plus, radxa_rock-5c, radxa_rock-5t, radxa_rock-pi-4a, radxa_rock-pi-e, radxa_rock-pi-s, radxa_zero-3e, radxa_zero-3w |
-| sinovoip   | sinovoip_bpi-r2-pro |
-| xunlong    | xunlong_orangepi-5, xunlong_orangepi-5-plus, xunlong_orangepi-r1-plus, xunlong_orangepi-r1-plus-lts |
+
 
 ## 😅 第三方插件 [![](https://img.shields.io/badge/-第三方插件-FFFFFF.svg)](#-第三方插件-)
 <div align="left">

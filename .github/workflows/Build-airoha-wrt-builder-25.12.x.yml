@@ -48,6 +48,7 @@ on:
           - '256'
           - '512'
           - '1024'
+          - '2048'          
       include_docker:
         description: "是否集成 Docker 插件"
         required: true
@@ -58,8 +59,10 @@ on:
           - 'no'
 
 env:
-  VERSION: ${{ inputs.luci_version }}
-  WRTINFORM: ${{ inputs.wrt_version }}  
+  # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
+  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && '25.12.1' || inputs.luci_version }}
+  FINAL_WRT: ${{ inputs.wrt_version }}
+  ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
   DOCKER: ${{ inputs.include_docker }}
 
 permissions:
@@ -76,62 +79,42 @@ jobs:
       - name: ⚙️ 设置可执行权限
         run: |
           chmod +x airoha/build25.sh
-          chmod +x shell/prepare-packages.sh
-          chmod +x shell/apk-custom-packages.sh
+          chmod +x airoha/immortalwrt-repositories
+          chmod +x airoha/openwrt-repositories   
+          chmod +x shell/*.sh
 
       - name: 🛠️ 安装依赖
-        run: |
+        run: |   
           sudo apt-get update
-          sudo apt-get install -y qemu-utils genisoimage
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zstd curl unzip tree qemu-utils genisoimage
 
       - name: ⚙️ Set custom IP config
         run: |
-          sed -i "s/版本号/${{ inputs.luci_version }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/版本号/${{ env.FINAL_LUCI_VER }}/g" files/etc/uci-defaults/99-custom.sh
           sed -i "s/__IPADDR__/${{ inputs.ipaddr }}/g" files/etc/uci-defaults/99-custom.sh
-          sed -i "s/VERXXXX/${{ inputs.luci_version }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/VERXXXX/${{ env.FINAL_LUCI_VER }}/g" files/etc/uci-defaults/99-custom.sh
           echo "✅ 配置修改完成"
 
       - name: ⏬ 下载 Wrt ImageBuilder 25.12.x
-        run: |
-          BUILD_VER="${{ inputs.luci_version }}"
-          WRTINFORM="${{ inputs.wrt_version }}"
-          
-          # 2. 逻辑拦截：如果选的是 immortalwrt 且版本小尾数大于 0 (即 25.12.1 及以上)
-          if [ "$WRTINFORM" = "immortalwrt" ]; then
-            SUB_VER=$(echo "$BUILD_VER" | cut -d'.' -f3)
-            if [ "$SUB_VER" -gt 1 ]; then
-              echo "⚠️ 拦截提示: ImmortalWrt 暂不支持过高版本 ($LUCI_VER)，已自动修正为 25.12.0"
-              BUILD_VER="25.12.0"
-            fi
-          fi
-          
-          # 3. 核心：将安全的目标版本和分支，写入 GitHub 全局环境变量中
-          echo "FINAL_LUCI_VER=$LUCI_VER" >> $GITHUB_ENV
-          echo "FINAL_WRT=$WRTINFORM" >> $GITHUB_ENV  
-          
-          #URL="https://downloads.${WRTINFORM}.org/releases/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-${BUILD_VER}-airoha-an7581.Linux-x86_64.tar.zst"
-          URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/${WRTINFORM}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
+        run: |          
+          URL="https://downloads.${{ env.FINAL_WRT }}.org/releases/${{ env.FINAL_LUCI_VER }}/targets/airoha/an7581/${{ env.FINAL_WRT }}-imagebuilder-${{ env.FINAL_LUCI_VER }}-airoha-an7581.Linux-x86_64.tar.zst"
           curl -Lf -o imagebuilder.tar.zst "$URL"
           tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
-          mv ${WRTINFORM}-imagebuilder-* imagebuilder
+          mv -- ${{ env.FINAL_WRT }}-imagebuilder-* imagebuilder
+          echo "✅ ImageBuilder 下载完成"
 
       - name: 🔄 复制必备文件
-        run: |
-          WRTINFORM="${{ inputs.wrt_version }}"
-          BUILD_VER="${{ inputs.luci_version }}"        
-          cp airoha/build25.sh imagebuilder/
-          
-          # 根据 WRTINFORM 的值判断复制哪个软件源文件
-          if [ "$WRTINFORM" = "openwrt" ]; then
-            cp airoha/openwrt_repositories imagebuilder/repositories
-          elif [ "$WRTINFORM" = "immortalwrt" ]; then
-            cp airoha/immortalwrt_repositories imagebuilder/repositories
+        run: |     
+          cp airoha/build25.sh imagebuilder/ 
+          if [ "${{ env.FINAL_WRT }}" = "openwrt" ]; then
+            cp airoha/openwrt-repositories imagebuilder/repositories
+            cat shell/apk-openwrt-custom-packages.sh >> imagebuilder/apk-custom-packages.sh
           else
-            echo "⚠️ 未知的 WRTINFORM 版本: $WRTINFORM，未复制软件源文件。"
-          fi
-          
+            cp airoha/immortalwrt-repositories imagebuilder/repositories
+            cat shell/apk-immortalwrt-custom-packages.sh >> imagebuilder/apk-custom-packages.sh
+          fi          
+          chmod +x imagebuilder/apk-custom-packages.sh
           cp shell/prepare-packages.sh imagebuilder/
-          cp shell/apk-custom-packages.sh imagebuilder/
           mkdir -p imagebuilder/files/etc/uci-defaults imagebuilder/files/etc/apk/repositories.d
           cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
           # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
@@ -139,11 +122,8 @@ jobs:
           echo "✅ 文件准备完成"
 
       - name: ⚙️ 动态获取 Kmod 哈希并更新配置
-        run: |
-          BUILD_VER="${{ inputs.luci_version }}"
-          WRTINFORM="${{ inputs.wrt_version }}"
-          #BASE_URL="https://downloads.${WRTINFORM}.org/releases/${BUILD_VER}/targets/airoha/an7581/kmods/"          
-          BASE_URL="https://downloads.${WRTINFORM}.org/${BUILD_VER}/targets/airoha/an7581/kmods/"
+        run: |        
+          BASE_URL="https://downloads.${{ env.FINAL_WRT }}.org/releases/${{ env.FINAL_LUCI_VER }}/targets/airoha/an7581/kmods/"
           echo "正在从 $BASE_URL 获取最新的内核哈希..."
           KMOD_DIR=$(curl -sL $BASE_URL | grep -oE "[0-9.-]+-[a-f0-9]{32}" | head -n 1)
           if [ -n "$KMOD_DIR" ]; then
@@ -156,6 +136,7 @@ jobs:
             echo "❌ 无法获取 Kmod 哈希"
             exit 1
           fi
+          echo "=== repositories 内容 ==="
           cat imagebuilder/repositories
 
       - name: 🧱 构建 WRT 25.12.x 固件
@@ -171,7 +152,7 @@ jobs:
           WRTINFORM="${{ inputs.wrt_version }}"
           cat > ${{ github.workspace }}/router-info.md <<EOF
           ## 📡 路由器后台信息
-          📌 版本： ${WRTINFORM}-${{ inputs.luci_version }}
+          📌 版本： ${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}
           🏠 后台地址： ${{ inputs.ipaddr }}
           👤 用户名： root
           🔑 密码： 无
@@ -181,7 +162,7 @@ jobs:
       - name: 🚀 上传到 Release
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: ${{ inputs.wrt_version }}-${{ inputs.luci_version }}-airoha-an7581-RELEASE-Docker-${{ inputs.include_docker }}
+          tag_name: ${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-airoha-an7581-RELEASE-Docker-${{ inputs.include_docker }}
           body_path: ${{ github.workspace }}/router-info.md
           files: |
             imagebuilder/bin/targets/airoha/an7581/*squashfs-sysupgrade.*

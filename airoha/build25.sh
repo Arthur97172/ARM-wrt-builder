@@ -1,10 +1,8 @@
 #!/bin/bash
-# ImmortalWrt 25.12.x Rockchip 构建脚本 (APK 格式)
+# Wrt 25.12.x Rockchip 构建脚本 (APK 格式)
 # 在 imagebuilder 目录下运行
-# 与 OpenWrt-X86/x86/build25.sh 保持一致的 APK 签名/索引逻辑
 
 # --- 接收外部参数 ---
-# 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
 PROFILE=${1:-"gemtek_w1700k-ubi"}
 ROOTFS_PARTSIZE=${2:-"256"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}

@@ -41,9 +41,16 @@
 
 | 插件                     | 状态 | 插件                     | 状态  | 插件                    | 状态   |
 |:------------------------:|:----:|:------------------------:|:-----:|:------------------------:|:------:|
-| N/A             |  ✅   | N/A                    |  ⏳     | N/A            | ⭕       |
+| Amlogic          | ✅   | Argon        | ✅    | Bandix-plus    |  ✅     |
+| Clashoo              |  ✅   | Daede                    |  ✅     | Lucky                | ✅      |
+| MosDNS              |  ✅   | Netwizard                   |  ✅     | Nikki            | ✅       |
+| Openclash              |  ✅   | Partexp                    |  ✅     | Poweroffdevice           | ✅       |
+| Rtp2httpd              |  ✅   | Tailscale                    |  ✅      | Taskplan           | ✅        |
+| Passwall              |  ✅   | N/A                    |  ⏳     | N/A            | ⭕       |
 
 ✅ 支持 - ⏳ 计划中 - ⭕ 不支持
+
+用户可根据自己需要对/shell/custom-packages.sh文件进行调节
 
 </div>
 
@@ -56,7 +63,8 @@
 > **"您的每一个⭐️，都是开源土壤里的一缕阳光，让灵感发芽，让创造生长~"**
 
 ## 🎉 Thanks [![](https://img.shields.io/badge/-Thanks-FFFFFF.svg)](#-Thanks-)
-- [immortalwrt](https://github.com/immortalwrt)
+- [OpenWrt](https://github.com/Openwrt)
+- [ImmortalWrt](https://github.com/immortalwrt)
 
 
 ## 🙏 免责声明 [![](https://img.shields.io/badge/-免责声明-FFFFFF.svg)](#-免责声明-)

@@ -11,7 +11,7 @@ on:
       luci_version:
         description: '选择 LuCI 版本 (例如 25.12.2)'
         required: true
-        default: '25.12.2'
+        default: 'snapshot'
         type: string
       device:
         description: '请选择或输入要编译的软路由设备 PROFILE'
@@ -35,7 +35,7 @@ on:
 # 核心环境变量
 env:
   # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
-  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && '25.12.1' || inputs.luci_version }}
+  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && 'snapshot' || inputs.luci_version }}
   FINAL_WRT: ${{ inputs.wrt_version }}
   DOCKER: ${{ inputs.include_docker }}
 

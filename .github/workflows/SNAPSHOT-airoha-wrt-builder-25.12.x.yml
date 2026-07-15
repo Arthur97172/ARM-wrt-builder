@@ -65,7 +65,7 @@ jobs:
         run: |
           echo "📥 正在获取并解压 Airoha 平台的 Image Builder 到 imagebuilder 目录..."
           # 这里保持你仓库原有的 Image Builder 下载解压逻辑，确保解压目标根目录名字或软链接为 imagebuilder
-          
+          URL="https://downloads.${{ env.FINAL_WRT }}.org/${{ env.FINAL_LUCI_VER }}/targets/airoha/an7581/${{ env.FINAL_WRT }}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
           # 建立底层核心目录，确保后续复制和注入命令不会因目录不存在而报错
           mkdir -p imagebuilder/target/linux/airoha/image-schemes
           mkdir -p imagebuilder/build_dir/target-aarch64_cortex-a53_musl/linux-airoha

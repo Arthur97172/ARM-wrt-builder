@@ -1,0 +1,93 @@
+name: Auto Extract and Release DTB
+
+on:
+  workflow_dispatch: # 在 GitHub 页面手动触发时显示选项
+    inputs:
+      source_repo:
+        description: '请选择要提取 DTB 的源固件仓库'
+        required: true
+        default: 'naoki66'
+        type: choice
+        options:
+          - 'naoki66 (naoki66/ImmortalWrt-for-Gemtek-XR1710G)'
+          - 'SongOfLightAndShadow (SongOfLightAndShadow/immortalwrt-xr1710g-las)'
+
+permissions:
+  contents: write
+
+jobs:
+  extract-and-release:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: 检出当前仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 U-Boot 工具
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y u-boot-tools wget jq
+
+      - name: 自动获取并下载选定仓库的最新版本 sysupgrade.itb 固件
+        run: |
+          SELECTED="${{ github.event.inputs.source_repo }}"
+          
+          if [[ "$SELECTED" == *"naoki66"* ]]; then
+            REPO="naoki66/ImmortalWrt-for-Gemtek-XR1710G"
+            SHORT_NAME="naoki66"
+            
+            echo "🔍 正在获取 $REPO 的最新发布版本..."
+            API_URL="https://api.github.com/repos/$REPO/releases/latest"
+            DOWNLOAD_URL=$(curl -sL $API_URL | jq -r '.assets[] | select(.name | contains("squashfs-sysupgrade.itb")) | .browser_download_url' | head -n 1)
+            
+            if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+              DOWNLOAD_URL="https://github.com/naoki66/ImmortalWrt-for-Gemtek-XR1710G/releases/latest/download/immortalwrt-airoha-an7581-gemtek-xr1710g-squashfs-sysupgrade.itb"
+            fi
+          else
+            REPO="SongOfLightAndShadow/immortalwrt-xr1710g-las"
+            SHORT_NAME="SongOfLightAndShadow"
+            
+            echo "🔍 正在分析 $REPO 所有的 Releases 以锁定最新含版本号的固件..."
+            RELEASES_API="https://api.github.com/repos/$REPO/releases?per_page=5"
+            DOWNLOAD_URL=$(curl -sL "$RELEASES_API" | jq -r '.[].assets[] | select(.name | contains("squashfs-sysupgrade.itb")) | .browser_download_url' | head -n 1)
+            
+            if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+              LATEST_TAG=$(curl -sL "https://api.github.com/repos/$REPO/releases" | jq -r '.[0].tag_name')
+              if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "null" ]; then
+                DOWNLOAD_URL="https://github.com/$REPO/releases/download/${LATEST_TAG}/immortalwrt-airoha-an7581-gemtek_xr1710g-ubi-squashfs-sysupgrade.itb"
+              else
+                DOWNLOAD_URL="https://github.com/SongOfLightAndShadow/immortalwrt-xr1710g-las/releases/download/v1.0.3/immortalwrt-airoha-an7581-gemtek_xr1710g-ubi-squashfs-sysupgrade.itb"
+              fi
+            fi
+          fi
+          
+          echo "📥 最终确定的最新固件下载链接: $DOWNLOAD_URL"
+          wget -q --show-progress -O firmware-sysupgrade.itb "$DOWNLOAD_URL"
+          
+          # 写入环境变量供后续步骤使用
+          echo "SOURCE_NAME=$SHORT_NAME" >> $GITHUB_ENV
+
+      - name: 给脚本添加执行权限
+        run: chmod +x extract-dtb.sh
+
+      - name: 执行设备树提取（仅提取 dtb 并自动命名）
+        # 将当前来源作为参数传递给脚本
+        run: ./extract-dtb.sh "${{ env.SOURCE_NAME }}"
+
+      - name: 发布 DTB 到本仓库的 Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-dtb
+          name: "Gemtek XR1710G 提取版 DTB 汇总"
+          body: |
+            这是自动从不同仓库最新版本的 `squashfs-sysupgrade.itb` 固件中提取出来的原始设备树二进制文件（.dtb）。
+            
+            - **文件名标识说明**:
+              - `naoki66_xxx.dtb`: 提取自 `naoki66` 仓库。
+              - `SongOfLightAndShadow_xxx.dtb`: 提取自 `SongOfLightAndShadow` 仓库。
+            - **提取时间**: 2026-07-15
+            - **用途**: 可直接用于 Image Builder 拼装或定制你的固件。
+          draft: false
+          prerelease: false
+          files: output/*.dtb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

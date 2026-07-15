@@ -16,7 +16,7 @@ on:
       device:
         description: '请选择或输入要编译的软路由设备 PROFILE'
         required: true
-        default: 'gemtek-xr1710g-ubi'
+        default: 'gemtek_xr1710g-ubi'
         type: string
       ipaddr:
         description: "请设置软路由的管理地址(注意仅对多网口软路由有效) 格式:192.168.x.1 或 10.x.x.1"
@@ -141,16 +141,21 @@ jobs:
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 设备 [$TARGET_PROFILE] 不原生存在于列表内。"
             
-            # 2.1 尝试寻找官方不带 -ubi 后缀的版本 (例如有些官方只注册了 gemtek-w1700k)
+            # 2.1 尝试寻找官方不带 -ubi 后缀的版本
             TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
             MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -w "${TARGET_CORE}" | head -n 1)
             
-            # 2.2 如果还是没找到，匹配任何含有 'gemtek' 关键字的可用官方 Profile
+            # 2.2 优先匹配正确的带下划线的原生模版：gemtek_w1700k-ubi 
+            if [ -z "$MATCHED_PROFILE" ]; then
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek_w1700k" | head -n 1)
+            fi
+            
+            # 2.3 兜底匹配任何包含 gemtek 的官方 Profile
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1)
             fi
             
-            # 2.3 如果连 gemtek 都没，使用默认的 'generic' 或列表中的第一个设备兜底
+            # 2.4 如果连 gemtek 都没找到，使用默认的 generic 或列表首项兜底
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
             fi
@@ -159,7 +164,7 @@ jobs:
             FINAL_BUILD_PROFILE="$MATCHED_PROFILE"
             IS_CLONED=true
           fi
-          cd .. # 返回根工作目录
+          cd .. # 返回工作流根目录
           
           # -------------------------------------------------------------
           # 【DTB 下载】
@@ -170,6 +175,7 @@ jobs:
           echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
           RELEASE_DATA=$(curl -sL "$API_URL")
           
+          # 提取核心名（兼容下划线和连字符格式）
           CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
           echo "🔄 正在分析所有适配 [$CORE_NAME] 的 DTB 文件并进行最新时间戳比对..."
           
@@ -207,11 +213,11 @@ jobs:
             mkdir -p "$IB_DTB_DIR"
           fi
           
-          # 1. 拷贝目标设备名字的 DTB（以防万一）
+          # 1. 拷贝目标设备名字的 DTB
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${TARGET_PROFILE}.dtb"
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_NAME}.dtb"
           
-          # 2. 如果是借用其他原生 Profile 编译，将原生 Profile 的所有可能 DTB 名字全部替换为下载的 DTB！
+          # 2. 如果是借用编译，将借用模板对应的所有可能 DTB 名字全部掉包！
           if [ "$IS_CLONED" = true ]; then
             REF_CORE=$(echo "$FINAL_BUILD_PROFILE" | sed 's/-ubi//g')
             echo "🔥 正在将自定义设备树强行覆盖借用模板的设备树 ($FINAL_BUILD_PROFILE) ..."
@@ -228,7 +234,7 @@ jobs:
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |
-          # 获取动态匹配到且官方绝对认识的真实 Profile 名
+          # 读取智能匹配到且官方绝对认识的真实 Profile 名 (对于 gemtek_xr1710g-ubi，这里会是 gemtek_w1700k-ubi)
           FINAL_PROFILE="${{ steps.custom_dtb_prepare.outputs.build_profile }}"
           echo "=== 开始使用构建脚本生成最终固件，实际使用的 Profile 为: $FINAL_PROFILE ==="
           
@@ -252,7 +258,7 @@ jobs:
             # 如果进行了借鸡生蛋编译，我们需要把产出固件名中的“借用模板名”恢复成用户想要的“目标设备名”
             if [ "${{ steps.custom_dtb_prepare.outputs.is_cloned }}" = "true" ]; then
               REF_NAME="${{ steps.custom_dtb_prepare.outputs.cloned_from }}"
-              # 清理可能带有的 -ubi 后缀用来做重命名匹配
+              # 清理可能带有的 -ubi 后缀
               REF_CORE=$(echo "$REF_NAME" | sed 's/-ubi//g')
               TARGET_NAME="${{ github.event.inputs.device }}"
               

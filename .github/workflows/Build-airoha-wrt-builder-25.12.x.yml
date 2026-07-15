@@ -14,7 +14,7 @@ on:
       luci_version:
         description: "选择luci版本"
         required: false
-        default: "25.12.6"
+        default: "snapshots"
         type: choice
         options:
           - '25.12.0'
@@ -39,17 +39,7 @@ on:
       ipaddr:
         description: "请设置软路由的管理地址(注意仅对多网口软路由有效) 格式:192.168.x.1 或 10.x.x.1"
         required: true
-        default: "192.168.10.1"
-      rootfs_partsize:
-        description: '设置软件包大小 单位(MB)'
-        required: true
-        default: '256'
-        type: choice
-        options:
-          - '256'
-          - '512'
-          - '1024'
-          - '2048'          
+        default: "192.168.10.1"        
       include_docker:
         description: "是否集成 Docker 插件"
         required: true
@@ -63,7 +53,6 @@ env:
   # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
   FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && '25.12.1' || inputs.luci_version }}
   FINAL_WRT: ${{ inputs.wrt_version }}
-  ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
   DOCKER: ${{ inputs.include_docker }}
 
 permissions:
@@ -146,9 +135,8 @@ jobs:
         working-directory: ./imagebuilder
         env:
           INCLUDE_DOCKER: ${{ inputs.include_docker }}
-          ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
         run: |
-          bash ./build25.sh "${{ inputs.profile }}" "${{ inputs.rootfs_partsize }}"
+          bash ./build25.sh "${{ inputs.profile }}"
 
       - name: 📜 生成发布说明
         run: |

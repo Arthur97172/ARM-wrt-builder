@@ -3,7 +3,7 @@
 # 在 imagebuilder 目录下运行
 
 # --- 接收外部参数 ---
-PROFILE=${1:-"gemtek_w1700k-ubi"}
+PROFILE=${1:-"gemtek_xr1710g-ubi"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 
 echo "Target Profile: $PROFILE"

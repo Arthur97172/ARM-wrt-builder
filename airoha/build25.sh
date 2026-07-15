@@ -67,7 +67,8 @@ fi
 if [ "$THIRD_PARTY_OK" = "1" ]; then
     # 创建临时目录存放第三方 APK
     mkdir -p thirdparty
-
+    
+    SKIP_APKS="*rtl826x*"
     # 复制第三方 APK 到临时目录(不覆盖 base 包)
     # rockchip/armv8 兼容 aarch64_generic 和 aarch64_cortex-a53;优先 aarch64_generic
     echo "复制第三方 APK 到 thirdparty/ 目录..."

@@ -31,6 +31,7 @@ on:
         options:
           - airoha_an7581-evb
           - gemtek_w1700k-ubi
+          - gemtek-xr1710g-ubi
           - nokia_valyrian
           - nokia_xg-040g-md
         required: true

@@ -28,7 +28,7 @@ PACKAGES=""
 PACKAGES="$PACKAGES base-files uci ubus dropbear logd mtd bash htop curl wget ca-bundle ca-certificates"
 PACKAGES="$PACKAGES dnsmasq-full firewall4 nftables kmod-nft-offload"
 PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe wpad-openssl"
-PACKAGES="$PACKAGES block-mount lsblk blkid kmod-usb-core kmod-usb-ehci kmod-usb-xhci kmod-usb-storage usbutils"
+PACKAGES="$PACKAGES block-mount lsblk blkid"
 
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"

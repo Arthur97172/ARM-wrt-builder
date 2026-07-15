@@ -110,6 +110,34 @@ jobs:
           echo "=== repositories 内容 ==="
           cat imagebuilder/repositories
 
+      - name: 🧬 克隆并注入官方原生 Profile 硬件设备信息
+        run: |
+          echo "=== 开始向 Image Builder 注入设备 Profile ==="
+          # 动态匹配 airoha 平台的 Makefile 路径（多路径兼容）
+          MAKEFILE_PATH=$(find imagebuilder -type f -path "*/airoha/image/Makefile" | head -n 1)
+          if [ -z "$MAKEFILE_PATH" ] || [ ! -f "$MAKEFILE_PATH" ]; then
+            MAKEFILE_PATH=$(find imagebuilder -type f -name "Makefile" | grep -E "image|target" | head -n 1)
+          fi
+          
+          if [ -n "$MAKEFILE_PATH" ] && [ -f "$MAKEFILE_PATH" ]; then
+            echo "🎯 找到目标 Makefile: $MAKEFILE_PATH"
+            
+            # 1. 提取并克隆定义：从 'define Device/gemtek_w1700k-ubi' 一直到 'endef'，将其中的 w1700k 替换为 xr1710g 并追加回 Makefile
+            sed -n '/define Device\/gemtek_w1700k-ubi/,/endef/p' "$MAKEFILE_PATH" | \
+              sed 's/gemtek_w1700k-ubi/gemtek_xr1710g-ubi/g' | \
+              sed 's/gemtek-w1700k-ubi/gemtek-xr1710g-ubi/g' | \
+              sed 's/Gemtek W1700K/Gemtek XR1710G/g' | \
+              sed 's/w1700k/xr1710g/g' >> "$MAKEFILE_PATH"
+            
+            # 2. 将新克隆出的设备追加到 Target Devices 编译列表中
+            sed -i '/TARGET_DEVICES +=/ s/$/ gemtek_xr1710g-ubi/' "$MAKEFILE_PATH"
+            
+            echo "🔥 成功将克隆出的 [gemtek_xr1710g-ubi] 注入到 Makefile 编译树中！"
+          else
+            echo "❌ 错误：无法定位 Makefile，Profile 注入失败！"
+            exit 1
+          fi
+
       - name: 🛡️ 智能化设备树检查与 Releases 注入机制
         id: custom_dtb_prepare
         run: |
@@ -123,7 +151,8 @@ jobs:
           # -------------------------------------------------------------
           cd imagebuilder
           echo "🔍 正在读取 Image Builder 支持的可用 Profile 列表..."
-          ALL_PROFILES=$(make info 2>/dev/null | grep -E "^[a-zA-Z0-9_-]+$" || true)
+          # 优化正则：容忍前置空格，同时清理首尾空白
+          ALL_PROFILES=$(make info 2>/dev/null | grep -E '^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*$' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
           echo "📋 官方支持的所有 Profile 列表如下："
           echo "$ALL_PROFILES"
           
@@ -131,31 +160,37 @@ jobs:
           FINAL_BUILD_PROFILE=""
           IS_CLONED=false
           
-          # 1. 修复：安全的检查当前输入的 PROFILE 是否原生存在（精确行匹配）
+          # 1. 检查当前输入的 PROFILE 是否原生/注入存在
           if echo "$ALL_PROFILES" | grep -xq "$TARGET_PROFILE"; then
             IS_NATIVE=true
             FINAL_BUILD_PROFILE="$TARGET_PROFILE"
+            echo "🎉 完美！系统成功识别并直接支持该 Profile: $TARGET_PROFILE"
           fi
           
-          # 2. 如果不原生支持，寻找替代的官方 Profile（借鸡生蛋）
+          # 2. 如果依然不原生支持（防万一的兜底），寻找替代的官方 Profile（借鸡生蛋）
           if [ "$IS_NATIVE" = false ]; then
-            echo "⚠️ 设备 [$TARGET_PROFILE] 不原生存在于列表内。"
+            echo "⚠️ 设备 [$TARGET_PROFILE] 在列表中未被激活，采用借鸡生蛋方案。"
             
             # 2.1 尝试寻找官方不带 -ubi 后缀的版本
             TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
             MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -x "${TARGET_CORE}" | head -n 1 || true)
             
-            # 2.2 优先匹配正确的带下划线或连字符的原生模版：gemtek_xr1710g / gemtek-xr1710g
+            # 2.2 优先匹配正确的带下划线或连字符的原生模版
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]xr1710g" | head -n 1 || true)
             fi
             
-            # 2.3 兜底：匹配任意包含 gemtek 的官方 Profile 
+            # 2.3 优先匹配官方的原生模板：gemtek_w1700k-ubi
+            if [ -z "$MATCHED_PROFILE" ]; then
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]w1700k" | head -n 1 || true)
+            fi
+            
+            # 2.4 兜底：匹配任意包含 gemtek 的官方 Profile 
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1 || true)
             fi
             
-            # 2.4 如果连 gemtek 都没找到，使用默认的 generic 兜底
+            # 2.5 如果连 gemtek 都没找到，使用默认的 generic 兜底
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
             fi
@@ -175,6 +210,12 @@ jobs:
           echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
           RELEASE_DATA=$(curl -sL "$API_URL")
           
+          # 确保获取到合法的 JSON 响应
+          if ! echo "$RELEASE_DATA" | jq empty 2>/dev/null; then
+            echo "⚠️ 获取 Release 数据异常，转为手动兜底源下载。"
+            RELEASE_DATA='{"assets": []}'
+          fi
+          
           # 提取核心名（清理 -ubi 等尾缀）
           CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
           # 建立互锁兼容名：如果 CORE_NAME 含有下划线，也生成连字符版本
@@ -182,23 +223,38 @@ jobs:
           
           echo "🔄 正在分析所有适配 [$CORE_NAME] 或 [$CORE_ALT] 的 DTB 文件并进行最新时间戳比对..."
           
+          # 增加 jq 的安全判空防护机制
           LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
-            .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
-          ' 2>/dev/null)
+            if .assets then
+              .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
+            else
+              null
+            end
+          ' 2>/dev/null || echo "null")
           
           LATEST_DTB_NAME=$(echo "$RELEASE_DATA" | jq -r --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
-            .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].name
-          ' 2>/dev/null)
+            if .assets then
+              .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].name
+            else
+              null
+            end
+          ' 2>/dev/null || echo "null")
           
-          if [ -z "$LATEST_DTB_URL" ] || [ "$LATEST_DTB_URL" == "null" ] || [ "$LATEST_DTB_NAME" == "null" ]; then
+          if [ -z "$LATEST_DTB_URL" ] || [ "$LATEST_DTB_URL" = "null" ] || [ "$LATEST_DTB_NAME" = "null" ]; then
             echo "💡 提示: 未能自动比对出最新时间戳，将使用您的手动兜底源: $DTB_SRC"
-            DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg prefix "${DTB_SRC}_" --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '.assets[] | select(.name | startswith($prefix) and (contains($core1) or contains($core2))) | .browser_download_url' | head -n 1)
+            DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg prefix "${DTB_SRC}_" --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
+              if .assets then
+                .assets[] | select(.name | startswith($prefix) and (contains($core1) or contains($core2))) | .browser_download_url
+              else
+                null
+              end
+            ' 2>/dev/null | head -n 1)
           else
             echo "🔥 智能比对成功！检测到最新提取的设备树文件为: $LATEST_DTB_NAME"
             DOWNLOAD_URL="$LATEST_DTB_URL"
           fi
           
-          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
             echo "❌ 错误: 未能在你仓库的 latest-dtb Release 中找到适配 [$CORE_NAME] 或 [$CORE_ALT] 的任何 .dtb 文件！"
             exit 1
           fi

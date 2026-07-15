@@ -119,46 +119,62 @@ jobs:
           echo "=== 开始硬件 PROFILE 检查: $TARGET_PROFILE ==="
           
           # 1. 检测所选设备是否在官方原生支持列表内
+          # 运行 make info 来查询 Image Builder 官方原生是否已经认识该设备
+          cd imagebuilder
           IS_NATIVE=false
-          SCHEME_DIR="imagebuilder/target/linux/airoha/image-schemes"
-          
-          if [ -d "$SCHEME_DIR" ]; then
-            if ls "$SCHEME_DIR" | grep -q "$TARGET_PROFILE"; then
-              IS_NATIVE=true
-            fi
+          if make info 2>/dev/null | grep -q "$TARGET_PROFILE"; then
+            IS_NATIVE=true
           fi
+          cd .. # 回到根目录
           
           # 2. 如果是非官方原生支持设备，启动 Releases DTB 动态注入 + Profile 克隆
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 提示: 设备 [$TARGET_PROFILE] 不在官方原生支持列表中！"
             
             # -------------------------------------------------------------
-            # 【核心改进】克隆官方现有的 gemtek-w1700k-ubi Profile 给新设备使用
+            # 【全新自适应克隆】动态搜索并克隆 gemtek-w1700k-ubi Profile
             # -------------------------------------------------------------
             REF_PROFILE="gemtek-w1700k-ubi"
-            if [ -d "$SCHEME_DIR" ]; then
-              # 查找参考设备的定义文件（通常是 json 或 yaml 格式的 scheme）
-              REF_FILE=$(find "$SCHEME_DIR" -type f -name "*${REF_PROFILE}*" | head -n 1)
+            echo "⚙️ 开始在 Image Builder 目录中全盘搜索参考设备 [${REF_PROFILE}] 的配置文件..."
+            
+            # 在 imagebuilder 目录下查找所有含有参考设备名字的文件（排除了编译临时目录和 bin）
+            REF_FILES=$(find imagebuilder -type f \( -name "*${REF_PROFILE}*" \) | grep -v "/build_dir/" | grep -v "/bin/" | grep -v "/staging_dir/" || true)
+            
+            if [ -n "$REF_FILES" ]; then
+              echo "📄 找到以下参考配置文件："
+              echo "$REF_FILES"
               
-              if [ -n "$REF_FILE" ]; then
-                # 获取文件后缀名
-                EXT="${REF_FILE##*.}"
-                NEW_FILE="$SCHEME_DIR/${TARGET_PROFILE}.${EXT}"
+              # 逐个复制并重命名，同时全局替换内容
+              echo "$REF_FILES" | while read -r REF_FILE; do
+                # 生成新文件名（把原文件名中的 w1700k 换成 xr1710g）
+                NEW_FILE=$(echo "$REF_FILE" | sed "s/${REF_PROFILE}/${TARGET_PROFILE}/g")
                 
-                echo "📄 找到参考设备配置文件: $REF_FILE"
-                echo "⚙️ 正在克隆并生成新设备配置文件: $NEW_FILE"
-                
-                # 复制并全局替换内部的参考设备名字为目标设备名字
+                echo "克隆: $REF_FILE -> $NEW_FILE"
+                mkdir -p "$(dirname "$NEW_FILE")"
                 cp "$REF_FILE" "$NEW_FILE"
+                
+                # 全局替换内部文本
                 sed -i "s/${REF_PROFILE}/${TARGET_PROFILE}/g" "$NEW_FILE"
+                
                 # 兼容不带-ubi的核心名替换
                 REF_CORE=$(echo "$REF_PROFILE" | sed 's/-ubi//g')
                 TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
                 sed -i "s/${REF_CORE}/${TARGET_CORE}/g" "$NEW_FILE"
-                
-                echo "✅ Profile 配置文件克隆并重命名成功！"
-              else
-                echo "⚠️ 未在 $SCHEME_DIR 中明确找到 ${REF_PROFILE} 的单独定义文件，尝试直接通过 Makefile 兼容..."
+              done
+              echo "✅ Profile 配置文件全自适应克隆成功！"
+            else
+              echo "⚠️ 警告: 未在 Image Builder 中搜索到 ${REF_PROFILE} 的实体文件，尝试修改目标 target info 数据库..."
+              # 如果在 25.12 中 Profile 写在特定的单个总数据文件（如 .targetinfo）里，我们直接做文本复制追加
+              if [ -f "imagebuilder/.targetinfo" ]; then
+                echo "📝 检测到 .targetinfo 数据库，正在动态注入新设备配置..."
+                # 提取 w1700k 的配置段并复制一份重命名为 xr1710g 附加到文件末尾
+                # 由于 .targetinfo 格式复杂，这里先做备份
+                cp imagebuilder/.targetinfo imagebuilder/.targetinfo.bak
+                # 简单的流式追加替换（可兼容大部分 Makefile/targetinfo 生成逻辑）
+                sed -n "/Target-Profile: ${REF_PROFILE}/,/@@/p" imagebuilder/.targetinfo | \
+                  sed "s/${REF_PROFILE}/${TARGET_PROFILE}/g" | \
+                  sed "s/$(echo $REF_PROFILE | sed 's/-ubi//g')/$(echo $TARGET_PROFILE | sed 's/-ubi//g')/g" >> imagebuilder/.targetinfo
+                echo "✅ .targetinfo 写入成功！"
               fi
             fi
             
@@ -219,7 +235,7 @@ jobs:
           else
             echo "✅ 确认设备 [$TARGET_PROFILE] 为官方原生支持，将正常使用 Image Builder 内置代码进行编译。"
           fi
-
+          
       - name: 🚀 执行 Image Builder 固件生成
         run: |
           TARGET_PROFILE="${{ github.event.inputs.device }}"

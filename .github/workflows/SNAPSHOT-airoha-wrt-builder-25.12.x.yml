@@ -21,7 +21,7 @@ on:
       include_docker:
         description: '是否包含 Docker (true/false)'
         required: true
-        default: 'true'
+        default: 'false'
         type: string
       dtb_source:
         description: '【兜底选项】若智能比对失效，默认使用的自定义 DTB 来源'

@@ -131,8 +131,8 @@ jobs:
           FINAL_BUILD_PROFILE=""
           IS_CLONED=false
           
-          # 1. 直接检测输入的 PROFILE 是否原生支持
-          if echo "$ALL_PROFILES" | grep -qWx "$TARGET_PROFILE"; then
+          # 1. 修复：安全的检查当前输入的 PROFILE 是否原生存在（精确行匹配）
+          if echo "$ALL_PROFILES" | grep -xq "$TARGET_PROFILE"; then
             IS_NATIVE=true
             FINAL_BUILD_PROFILE="$TARGET_PROFILE"
           fi
@@ -143,19 +143,19 @@ jobs:
             
             # 2.1 尝试寻找官方不带 -ubi 后缀的版本
             TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
-            MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -w "${TARGET_CORE}" | head -n 1)
+            MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -x "${TARGET_CORE}" | head -n 1 || true)
             
-            # 2.2 优先匹配正确的带下划线的原生模版：gemtek_w1700k-ubi 
+            # 2.2 优先匹配正确的带下划线或连字符的原生模版：gemtek_xr1710g / gemtek-xr1710g
             if [ -z "$MATCHED_PROFILE" ]; then
-              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek_w1700k" | head -n 1)
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]xr1710g" | head -n 1 || true)
             fi
             
-            # 2.3 兜底匹配任何包含 gemtek 的官方 Profile
+            # 2.3 兜底：匹配任意包含 gemtek 的官方 Profile 
             if [ -z "$MATCHED_PROFILE" ]; then
-              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1)
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1 || true)
             fi
             
-            # 2.4 如果连 gemtek 都没找到，使用默认的 generic 或列表首项兜底
+            # 2.4 如果连 gemtek 都没找到，使用默认的 generic 兜底
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
             fi
@@ -167,7 +167,7 @@ jobs:
           cd .. # 返回工作流根目录
           
           # -------------------------------------------------------------
-          # 【DTB 下载】
+          # 【DTB 下载】兼容下划线 `_` 和 连字符 `-`
           # -------------------------------------------------------------
           OWNER_REPO="${{ github.repository }}" 
           API_URL="https://api.github.com/repos/${OWNER_REPO}/releases/tags/latest-dtb"
@@ -175,28 +175,31 @@ jobs:
           echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
           RELEASE_DATA=$(curl -sL "$API_URL")
           
-          # 提取核心名（兼容下划线和连字符格式）
+          # 提取核心名（清理 -ubi 等尾缀）
           CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
-          echo "🔄 正在分析所有适配 [$CORE_NAME] 的 DTB 文件并进行最新时间戳比对..."
+          # 建立互锁兼容名：如果 CORE_NAME 含有下划线，也生成连字符版本
+          CORE_ALT=$(echo "$CORE_NAME" | tr '_' '-')
           
-          LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core "$CORE_NAME" '
-            .assets | map(select(.name | contains($core) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
+          echo "🔄 正在分析所有适配 [$CORE_NAME] 或 [$CORE_ALT] 的 DTB 文件并进行最新时间戳比对..."
+          
+          LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
+            .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
           ' 2>/dev/null)
           
-          LATEST_DTB_NAME=$(echo "$RELEASE_DATA" | jq -r --arg core "$CORE_NAME" '
-            .assets | map(select(.name | contains($core) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].name
+          LATEST_DTB_NAME=$(echo "$RELEASE_DATA" | jq -r --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
+            .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].name
           ' 2>/dev/null)
           
           if [ -z "$LATEST_DTB_URL" ] || [ "$LATEST_DTB_URL" == "null" ] || [ "$LATEST_DTB_NAME" == "null" ]; then
             echo "💡 提示: 未能自动比对出最新时间戳，将使用您的手动兜底源: $DTB_SRC"
-            DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg prefix "${DTB_SRC}_" --arg core "$CORE_NAME" '.assets[] | select(.name | startswith($prefix) and contains($core)) | .browser_download_url' | head -n 1)
+            DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg prefix "${DTB_SRC}_" --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '.assets[] | select(.name | startswith($prefix) and (contains($core1) or contains($core2))) | .browser_download_url' | head -n 1)
           else
             echo "🔥 智能比对成功！检测到最新提取的设备树文件为: $LATEST_DTB_NAME"
             DOWNLOAD_URL="$LATEST_DTB_URL"
           fi
           
           if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-            echo "❌ 错误: 未能在你仓库的 latest-dtb Release 中找到包含 [$CORE_NAME] 的任何 .dtb 文件！"
+            echo "❌ 错误: 未能在你仓库的 latest-dtb Release 中找到适配 [$CORE_NAME] 或 [$CORE_ALT] 的任何 .dtb 文件！"
             exit 1
           fi
           
@@ -216,13 +219,16 @@ jobs:
           # 1. 拷贝目标设备名字的 DTB
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${TARGET_PROFILE}.dtb"
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_NAME}.dtb"
+          cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_ALT}.dtb"
           
           # 2. 如果是借用编译，将借用模板对应的所有可能 DTB 名字全部掉包！
           if [ "$IS_CLONED" = true ]; then
             REF_CORE=$(echo "$FINAL_BUILD_PROFILE" | sed 's/-ubi//g')
+            REF_ALT=$(echo "$REF_CORE" | tr '_' '-')
             echo "🔥 正在将自定义设备树强行覆盖借用模板的设备树 ($FINAL_BUILD_PROFILE) ..."
             cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${FINAL_BUILD_PROFILE}.dtb"
             cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${REF_CORE}.dtb"
+            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${REF_ALT}.dtb"
           fi
           
           echo "✅ 自定义设备树注入与掉包成功！"
@@ -234,7 +240,7 @@ jobs:
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |
-          # 读取智能匹配到且官方绝对认识的真实 Profile 名 (对于 gemtek_xr1710g-ubi，这里会是 gemtek_w1700k-ubi)
+          # 获取动态匹配到的可用 Profile
           FINAL_PROFILE="${{ steps.custom_dtb_prepare.outputs.build_profile }}"
           echo "=== 开始使用构建脚本生成最终固件，实际使用的 Profile 为: $FINAL_PROFILE ==="
           
@@ -258,18 +264,27 @@ jobs:
             # 如果进行了借鸡生蛋编译，我们需要把产出固件名中的“借用模板名”恢复成用户想要的“目标设备名”
             if [ "${{ steps.custom_dtb_prepare.outputs.is_cloned }}" = "true" ]; then
               REF_NAME="${{ steps.custom_dtb_prepare.outputs.cloned_from }}"
-              # 清理可能带有的 -ubi 后缀
               REF_CORE=$(echo "$REF_NAME" | sed 's/-ubi//g')
+              REF_ALT=$(echo "$REF_CORE" | tr '_' '-')
               TARGET_NAME="${{ github.event.inputs.device }}"
               
-              echo "🔄 检测到借用编译，正在重命名输出固件。将 $REF_CORE 替换为 $TARGET_NAME"
+              echo "🔄 检测到借用编译，正在重命名输出固件..."
               
-              # 循环执行重命名
-              for file in *${REF_CORE}*; do
+              # 双向替换（兼容下划线和连字符格式）
+              for file in *; do
                 if [ -f "$file" ]; then
-                  new_file=$(echo "$file" | sed "s/${REF_CORE}/${TARGET_NAME}/g" | sed "s/-ubi-ubi/-ubi/g")
-                  echo "重命名: $file -> $new_file"
-                  mv "$file" "$new_file"
+                  new_file="$file"
+                  if [[ "$file" == *"$REF_CORE"* ]]; then
+                    new_file=$(echo "$file" | sed "s/${REF_CORE}/${TARGET_NAME}/g")
+                  elif [[ "$file" == *"$REF_ALT"* ]]; then
+                    new_file=$(echo "$file" | sed "s/${REF_ALT}/${TARGET_NAME}/g")
+                  fi
+                  # 清除双后缀
+                  new_file=$(echo "$new_file" | sed "s/-ubi-ubi/-ubi/g" | sed "s/_ubi_ubi/_ubi/g")
+                  if [ "$file" != "$new_file" ]; then
+                    echo "重命名: $file -> $new_file"
+                    mv "$file" "$new_file"
+                  fi
                 fi
               done
             fi

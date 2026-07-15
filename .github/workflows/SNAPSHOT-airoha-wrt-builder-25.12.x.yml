@@ -18,6 +18,10 @@ on:
         required: true
         default: 'gemtek-xr1710g-ubi'
         type: string
+      ipaddr:
+        description: "请设置软路由的管理地址(注意仅对多网口软路由有效) 格式:192.168.x.1 或 10.x.x.1"
+        required: true
+        default: "192.168.10.1"
       include_docker:
         description: '是否包含 Docker (true/false)'
         required: true
@@ -55,20 +59,21 @@ jobs:
           sudo apt-get install -y build-essential libncurses5-dev libssl-dev \
             zlib1g-dev gawk gettext file wget ccache xz-utils u-boot-tools jq curl
 
-      - name: 🔄 动态获取 Kmod 哈希并更新配置
+      - name: ⚙️ Set custom IP config
         run: |
-          echo "🔄 正在基于 ${FINAL_WRT} 和 ${FINAL_LUCI_VER} 动态获取上游内核 Kmod 哈希并同步配置..."
-          # 这里保持你仓库原本通过 ${FINAL_LUCI_VER} 获取并写入配置的指令
-          echo "✅ Kmod 哈希动态同步完成！"
+          sed -i "s/版本号/${{ env.FINAL_LUCI_VER }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/__IPADDR__/${{ inputs.ipaddr }}/g" files/etc/uci-defaults/99-custom.sh
+          sed -i "s/VERXXXX/${{ env.FINAL_LUCI_VER }}/g" files/etc/uci-defaults/99-custom.sh
+          echo "✅ 配置修改完成"
 
       - name: 📥 下载并解压 Airoha Image Builder
         run: |
           echo "📥 正在获取并解压 Airoha 平台的 Image Builder 到 imagebuilder 目录..."
           # 这里保持你仓库原有的 Image Builder 下载解压逻辑，确保解压目标根目录名字或软链接为 imagebuilder
           URL="https://downloads.${{ env.FINAL_WRT }}.org/${{ env.FINAL_LUCI_VER }}/targets/airoha/an7581/${{ env.FINAL_WRT }}-imagebuilder-airoha-an7581.Linux-x86_64.tar.zst"
-          # 建立底层核心目录，确保后续复制和注入命令不会因目录不存在而报错
-          mkdir -p imagebuilder/target/linux/airoha/image-schemes
-          mkdir -p imagebuilder/build_dir/target-aarch64_cortex-a53_musl/linux-airoha
+          curl -Lf -o imagebuilder.tar.zst "$URL"
+          tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
+          mv -- ${{ env.FINAL_WRT }}-imagebuilder-* imagebuilder
 
       - name: 🔄 复制必备文件
         run: |
@@ -87,6 +92,24 @@ jobs:
           # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
           cat files/customfeeds/25.customfeeds.list >> imagebuilder/files/etc/apk/repositories.d/customfeeds.list
           echo "✅ 文件准备完成"
+
+      - name: ⚙️ 动态获取 Kmod 哈希并更新配置
+        run: |        
+          BASE_URL="https://downloads.${{ env.FINAL_WRT }}.org/${{ env.FINAL_LUCI_VER }}/targets/airoha/an7581/kmods/"
+          echo "正在从 $BASE_URL 获取最新的内核哈希..."
+          KMOD_DIR=$(curl -sL $BASE_URL | grep -oE "[0-9.-]+-[a-f0-9]{32}" | head -n 1)
+          if [ -n "$KMOD_DIR" ]; then
+            FULL_KMOD_URL="${BASE_URL}${KMOD_DIR}/packages.adb"
+            echo "✅ 成功匹配 kmods 路径: $FULL_KMOD_URL"
+            # 替换 repositories 文件中的占位符
+            sed -i "s|VERSION_PLACEHOLDER|${BUILD_VER}|g" imagebuilder/repositories
+            sed -i "s|KMOD_PLACEHOLDER|${FULL_KMOD_URL}|g" imagebuilder/repositories
+          else
+            echo "❌ 无法获取 Kmod 哈希"
+            exit 1
+          fi
+          echo "=== repositories 内容 ==="
+          cat imagebuilder/repositories
 
       - name: 🛡️ 智能化设备树检查与 Releases 注入机制
         run: |

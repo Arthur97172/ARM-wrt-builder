@@ -118,49 +118,71 @@ jobs:
           
           echo "=== 开始硬件 PROFILE 检查: $TARGET_PROFILE ==="
           
-          # 1. 检测所选设备是否在官方原生支持列表内 (路径适配 imagebuilder 目录)
+          # 1. 检测所选设备是否在官方原生支持列表内
           IS_NATIVE=false
-          if [ -d "imagebuilder/target/linux/airoha/image-schemes" ]; then
-            if ls imagebuilder/target/linux/airoha/image-schemes/ | grep -q "$TARGET_PROFILE"; then
+          SCHEME_DIR="imagebuilder/target/linux/airoha/image-schemes"
+          
+          if [ -d "$SCHEME_DIR" ]; then
+            if ls "$SCHEME_DIR" | grep -q "$TARGET_PROFILE"; then
               IS_NATIVE=true
             fi
           fi
           
-          # 2. 如果是非官方原生支持设备，启动 Releases DTB 动态注入
+          # 2. 如果是非官方原生支持设备，启动 Releases DTB 动态注入 + Profile 克隆
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 提示: 设备 [$TARGET_PROFILE] 不在官方原生支持列表中！"
             
-            # 自动获取当前用户名和仓库名 (例如 Arthur97172/Airoha-wrt-builder)
+            # -------------------------------------------------------------
+            # 【核心改进】克隆官方现有的 gemtek-w1700k-ubi Profile 给新设备使用
+            # -------------------------------------------------------------
+            REF_PROFILE="gemtek-w1700k-ubi"
+            if [ -d "$SCHEME_DIR" ]; then
+              # 查找参考设备的定义文件（通常是 json 或 yaml 格式的 scheme）
+              REF_FILE=$(find "$SCHEME_DIR" -type f -name "*${REF_PROFILE}*" | head -n 1)
+              
+              if [ -n "$REF_FILE" ]; then
+                # 获取文件后缀名
+                EXT="${REF_FILE##*.}"
+                NEW_FILE="$SCHEME_DIR/${TARGET_PROFILE}.${EXT}"
+                
+                echo "📄 找到参考设备配置文件: $REF_FILE"
+                echo "⚙️ 正在克隆并生成新设备配置文件: $NEW_FILE"
+                
+                # 复制并全局替换内部的参考设备名字为目标设备名字
+                cp "$REF_FILE" "$NEW_FILE"
+                sed -i "s/${REF_PROFILE}/${TARGET_PROFILE}/g" "$NEW_FILE"
+                # 兼容不带-ubi的核心名替换
+                REF_CORE=$(echo "$REF_PROFILE" | sed 's/-ubi//g')
+                TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
+                sed -i "s/${REF_CORE}/${TARGET_CORE}/g" "$NEW_FILE"
+                
+                echo "✅ Profile 配置文件克隆并重命名成功！"
+              else
+                echo "⚠️ 未在 $SCHEME_DIR 中明确找到 ${REF_PROFILE} 的单独定义文件，尝试直接通过 Makefile 兼容..."
+              fi
+            fi
+            
+            # -------------------------------------------------------------
+            # 【DTB 注入】下载并注入你自定义的 DTB 固件
+            # -------------------------------------------------------------
             OWNER_REPO="${{ github.repository }}" 
             API_URL="https://api.github.com/repos/${OWNER_REPO}/releases/tags/latest-dtb"
             
             echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
             RELEASE_DATA=$(curl -sL "$API_URL")
             
-            # 裁剪掉末尾的 -ubi 或 _ubi 后缀，提取核心设备名 (例如把 gemtek-xr1710g-ubi 变为 gemtek-xr1710g)
             CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
             
             echo "🔄 正在分析所有适配 [$CORE_NAME] 的 DTB 文件并进行最新时间戳比对..."
             
-            # 通过 jq 筛选属于该设备且以 .dtb 结尾的资产，并按 updated_at 降序排序（最新的排在最前面）
             LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core "$CORE_NAME" '
-              .assets
-              | map(select(.name | contains($core) and endswith(".dtb")))
-              | sort_by(.updated_at)
-              | reverse
-              | .[0].browser_download_url
+              .assets | map(select(.name | contains($core) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
             ' 2>/dev/null)
             
-            # 提取对应的最新文件名用于日志回显
             LATEST_DTB_NAME=$(echo "$RELEASE_DATA" | jq -r --arg core "$CORE_NAME" '
-              .assets
-              | map(select(.name | contains($core) and endswith(".dtb")))
-              | sort_by(.updated_at)
-              | reverse
-              | .[0].name
+              .assets | map(select(.name | contains($core) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].name
             ' 2>/dev/null)
             
-            # 容错处理：如果因为某种原因通过时间排序没拿到，则使用用户手动选择的 dtb_source 作为兜底
             if [ -z "$LATEST_DTB_URL" ] || [ "$LATEST_DTB_URL" == "null" ] || [ "$LATEST_DTB_NAME" == "null" ]; then
               echo "💡 提示: 未能自动比对出最新时间戳，将使用您的手动兜底源: $DTB_SRC"
               DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r --arg prefix "${DTB_SRC}_" --arg core "$CORE_NAME" '.assets[] | select(.name | startswith($prefix) and contains($core)) | .browser_download_url' | head -n 1)
@@ -169,10 +191,8 @@ jobs:
               DOWNLOAD_URL="$LATEST_DTB_URL"
             fi
             
-            # 最终检验链接是否有效
             if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
               echo "❌ 错误: 未能在你仓库的 latest-dtb Release 中找到包含 [$CORE_NAME] 的任何 .dtb 文件！"
-              echo "请确保你之前运行了提取脚本，并且将文件成功发布到了本仓库的 Releases 里。"
               exit 1
             fi
             
@@ -180,23 +200,39 @@ jobs:
             mkdir -p ./custom-dtb
             wget -q --show-progress -O ./custom-dtb/custom.dtb "$DOWNLOAD_URL"
             
-            # 3. 将下载好的自定义 dtb 强行重命名并注入到 Image Builder 对应的架构平台目录中
-            # 寻找 imagebuilder 目录下的真实 linux-airoha 目录位置
             IB_DTB_DIR=$(find imagebuilder -type d -path "*/linux-airoha" | head -n 1)
             if [ -z "$IB_DTB_DIR" ] || [ ! -d "$IB_DTB_DIR" ]; then
               IB_DTB_DIR="imagebuilder/build_dir/target-aarch64_cortex-a53_musl/linux-airoha"
               mkdir -p "$IB_DTB_DIR"
             fi
             
-            # 强行覆盖 Image Builder 最终打包会读取的设备树二进制名字
+            # 将设备树强行写入最终打包会读取的文件名位置
             INJECT_NAME="image-${TARGET_PROFILE}.dtb"
             cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/$INJECT_NAME"
+            
+            # 兜底多拷贝一份不带 -ubi 后缀的名字，防止 Makefile 内部生成逻辑剥离了后缀
+            INJECT_CORE_NAME="image-${CORE_NAME}.dtb"
+            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/$INJECT_CORE_NAME"
             
             echo "✅ 自定义设备树注入成功！"
             echo "👉 已将目标 DTB 强行写入为: $IB_DTB_DIR/$INJECT_NAME"
           else
             echo "✅ 确认设备 [$TARGET_PROFILE] 为官方原生支持，将正常使用 Image Builder 内置代码进行编译。"
           fi
+
+      - name: 🚀 执行 Image Builder 固件生成
+        run: |
+          TARGET_PROFILE="${{ github.event.inputs.device }}"
+          echo "=== 开始使用构建脚本生成最终固件 ==="
+          
+          cd imagebuilder
+          chmod +x build25.sh
+          
+          # 此时输入用户选定的 "gemtek-xr1710g-ubi" 就可以直接被系统识别了！
+          ./build25.sh "$TARGET_PROFILE" || {
+            echo "❌ 固件打包失败，请检查编译日志或 PROFILE 命名。"
+            exit 1
+          }
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |

@@ -163,9 +163,10 @@ jobs:
           
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 设备 [$TARGET_PROFILE] 在列表中未被激活，采用借鸡生蛋方案。"
-            TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
-            MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -x "${TARGET_CORE}" | head -n 1 || true)
+            TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
             
+            # 宽松模糊匹配
+            MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -x "${TARGET_CORE}" | head -n 1 || true)
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]xr1710g" | head -n 1 || true)
             fi
@@ -175,8 +176,14 @@ jobs:
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1 || true)
             fi
+            
+            # 🔴 强力硬兜底：若以上全失效，直接指向最稳定的 gemtek_w1700k-ubi 模板
             if [ -z "$MATCHED_PROFILE" ]; then
-              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
+              if echo "$ALL_PROFILES" | grep -q "gemtek_w1700k-ubi"; then
+                MATCHED_PROFILE="gemtek_w1700k-ubi"
+              else
+                MATCHED_PROFILE=$(echo "$ALL_PROFILES" | head -n 1)
+              fi
             fi
             
             echo "💡 智能化匹配：我们将借用官方原生存在的 [$MATCHED_PROFILE] 作为编译模板！"
@@ -186,7 +193,7 @@ jobs:
           cd .. # 返回工作流根目录
           
           # -------------------------------------------------------------
-          # 【DTB 下载】兼容下划线 `_` 和 连字符 `-`
+          # 【DTB 下载】从 latest-dtb Release 获取对应文件
           # -------------------------------------------------------------
           OWNER_REPO="${{ github.repository }}" 
           API_URL="https://api.github.com/repos/${OWNER_REPO}/releases/tags/latest-dtb"
@@ -270,9 +277,6 @@ jobs:
           # -------------------------------------------------------------
           # 【💥 核心修复：绕过 APK 包依赖和内核检测限制】
           # -------------------------------------------------------------
-          # 修改 Image Builder 内部的编译规则文件（通常是 rules.mk 或 include/image.mk ），注入 --allow-unsupported-dep 参数
-          # 或者直接在编译调用链中修改 apk 参数。为了万无一失，我们直接针对目标 apk 调用链开启强制忽略依赖。
-          # 适用于 OpenWrt 25.12 的 APK 命令，允许未找到依赖以及不兼容继续强行打包
           find imagebuilder -type f -name "*.mk" -exec sed -i 's/apk add/apk add --allow-unsupported-dep/g' {} +
           find imagebuilder -type f -name "*.sh" -exec sed -i 's/apk add/apk add --allow-unsupported-dep/g' {} +
           
@@ -283,8 +287,15 @@ jobs:
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |
-          # 🎯 修复：此处必须动态提取 custom_dtb_prepare 的输出，严禁写死！
+          # 🎯 从上一步中，提取自适应计算或强制硬兜底后的 Profile，保证不为空值
           FINAL_PROFILE="${{ steps.custom_dtb_prepare.outputs.build_profile }}"
+          
+          # 🔴 最终运行环境级安全兜底，防止意外变量丢失
+          if [ -z "$FINAL_PROFILE" ]; then
+             echo "⚠️ 警告：检测到传递的 FINAL_PROFILE 为空，启动 YML 层级硬重置！"
+             FINAL_PROFILE="gemtek_w1700k-ubi"
+          fi
+          
           echo "=== 开始使用构建脚本生成最终固件，实际使用的 Profile 为: $FINAL_PROFILE ==="
           
           cd imagebuilder

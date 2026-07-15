@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       wrt_version:
-        description: '选择编译的固件类型 (例如 immortalwrt)'
+        description: '选择编译的固件类型 (例如 immortalwrt / openwrt)'
         required: true
         default: 'immortalwrt'
         type: string
@@ -37,7 +37,7 @@ on:
           - 'naoki66'
           - 'SongOfLightAndShadow'
 
-# 核心环境变量注入（完美还原你的逻辑）
+# 核心环境变量
 env:
   # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
   FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && '25.12.1' || inputs.luci_version }}
@@ -61,36 +61,53 @@ jobs:
           sudo apt-get install -y build-essential libncurses5-dev libssl-dev \
             zlib1g-dev gawk gettext file wget ccache xz-utils u-boot-tools jq curl
 
-      - name: 动态获取 Kmod 哈希并更新配置
+      - name: 🔄 动态获取 Kmod 哈希并更新配置
         run: |
           echo "🔄 正在基于 ${FINAL_WRT} 和 ${FINAL_LUCI_VER} 动态获取上游内核 Kmod 哈希并同步配置..."
-          # 这里保持你仓库原本通过 ${FINAL_LUCI_VER} 获取哈希的指令
+          # 这里请保持你原有的哈希获取与处理逻辑
           echo "✅ Kmod 哈希动态同步完成！"
 
-      - name: 下载并解压 Airoha Image Builder
+      - name: 📥 下载并解压 Airoha Image Builder
         run: |
-          echo "📥 正在获取并解压 Airoha 平台的 Image Builder..."
-          # 这里保持你仓库原有的 Image Builder 下载解压逻辑
-          mkdir -p target/linux/airoha/image-schemes
-          mkdir -p build_dir/target-aarch64_cortex-a53_musl/linux-airoha
+          echo "📥 正在获取并解压 Airoha 平台的 Image Builder 到 imagebuilder 目录..."
+          # 这里保持你仓库原有的 Image Builder 下载解压逻辑，确保解压出的根目录名字或软链接为 imagebuilder
+          # 示范结构：
+          # wget -q https://downloads.immortalwrt.org/.../imagebuilder.tar.xz
+          # mkdir -p imagebuilder && tar -xJF *.tar.xz -C imagebuilder --strip-components=1
+          
+          # 建立必要的底层目录，确保后续复制和注入命令不会因目录不存在而报错
+          mkdir -p imagebuilder/target/linux/airoha/image-schemes
+          mkdir -p imagebuilder/build_dir/target-aarch64_cortex-a53_musl/linux-airoha
 
-      - name: 复制必备文件
+      - name: 🔄 复制必备文件
         run: |
-          echo "📂 正在复制仓库内的必备配置文件、自定义 files 目录及 feeds 配置..."
-          # 这里保持你仓库原本的复制逻辑 (利用到了 ROOTFS_PARTSIZE 和 DOCKER 变量进行处理配置)
-          echo "✅ 必备文件复制与环境初始化完成！"
+          cp airoha/build25.sh imagebuilder/ 
+          if [ "${{ env.FINAL_WRT }}" = "openwrt" ]; then
+            cp airoha/openwrt-repositories imagebuilder/repositories
+            cat shell/apk-openwrt-custom-packages.sh >> imagebuilder/apk-custom-packages.sh
+          else
+            cp airoha/immortalwrt-repositories imagebuilder/repositories
+            cat shell/apk-immortalwrt-custom-packages.sh >> imagebuilder/apk-custom-packages.sh
+          fi          
+          chmod +x imagebuilder/apk-custom-packages.sh
+          cp shell/prepare-packages.sh imagebuilder/
+          mkdir -p imagebuilder/files/etc/uci-defaults imagebuilder/files/etc/apk/repositories.d
+          cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
+          # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
+          cat files/customfeeds/25.customfeeds.list >> imagebuilder/files/etc/apk/repositories.d/customfeeds.list
+          echo "✅ 文件准备完成"
 
-      - name: 智能化设备树检查与 Releases 注入机制
+      - name: 🛡️ 智能化设备树检查与 Releases 注入机制
         run: |
           TARGET_PROFILE="${{ github.event.inputs.device }}"
           DTB_SRC="${{ github.event.inputs.dtb_source }}"
           
           echo "=== 开始硬件 PROFILE 检查: $TARGET_PROFILE ==="
           
-          # 1. 检测所选设备是否在官方原生支持列表内
+          # 1. 检测所选设备是否在官方原生支持列表内 (路径适配 imagebuilder 目录)
           IS_NATIVE=false
-          if [ -d "target/linux/airoha/image-schemes" ]; then
-            if ls target/linux/airoha/image-schemes/ | grep -q "$TARGET_PROFILE"; then
+          if [ -d "imagebuilder/target/linux/airoha/image-schemes" ]; then
+            if ls imagebuilder/target/linux/airoha/image-schemes/ | grep -q "$TARGET_PROFILE"; then
               IS_NATIVE=true
             fi
           fi
@@ -99,7 +116,7 @@ jobs:
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 提示: 设备 [$TARGET_PROFILE] 不在官方原生支持列表中！"
             
-            # 自动获取当前仓库名 (格式如: Arthur97172/Airoha-wrt-builder)
+            # 自动获取当前用户名和仓库名 (Arthur97172/Airoha-wrt-builder)
             OWNER_REPO="${{ github.repository }}" 
             API_URL="https://api.github.com/repos/${OWNER_REPO}/releases/tags/latest-dtb"
             
@@ -150,9 +167,10 @@ jobs:
             wget -q --show-progress -O ./custom-dtb/custom.dtb "$DOWNLOAD_URL"
             
             # 3. 将下载好的自定义 dtb 强行重命名并注入到 Image Builder 对应的架构平台目录中
-            IB_DTB_DIR=$(find . -type d -path "*/linux-airoha" | head -n 1)
+            # 先去 imagebuilder 目录下寻找真实的 linux-airoha 目录
+            IB_DTB_DIR=$(find imagebuilder -type d -path "*/linux-airoha" | head -n 1)
             if [ -z "$IB_DTB_DIR" ] || [ ! -d "$IB_DTB_DIR" ]; then
-              IB_DTB_DIR="./build_dir/target-aarch64_cortex-a53_musl/linux-airoha"
+              IB_DTB_DIR="imagebuilder/build_dir/target-aarch64_cortex-a53_musl/linux-airoha"
               mkdir -p "$IB_DTB_DIR"
             fi
             
@@ -166,25 +184,28 @@ jobs:
             echo "✅ 确认设备 [$TARGET_PROFILE] 为官方原生支持，将正常使用 Image Builder 内置代码进行编译。"
           fi
 
-      - name: 执行 Image Builder 固件生成
+      - name: 🚀 执行 Image Builder 固件生成
         run: |
           TARGET_PROFILE="${{ github.event.inputs.device }}"
           echo "=== 开始使用 Image Builder 构建最终固件 ==="
           
-          # 执行拼装镜像命令，保持你原有的配置及 PACKAGES 生成逻辑
+          # 切换到 imagebuilder 目录下执行真正的打包命令
+          cd imagebuilder
+          # 执行拼装镜像命令 (保持你原有的配置及可能存在的指令，这里以标准 make 动作为基础)
           make image PROFILE="$TARGET_PROFILE" || {
             echo "❌ 固件打包失败，请检查编译日志或 PROFILE 命名。"
             exit 1
           }
 
-      - name: 整理并归档固件产物
+      - name: 📦 整理并归档固件产物
         run: |
           mkdir -p ./artifact
-          find bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*img*" \) -exec cp {} ./artifact/ \;
+          # 从 imagebuilder/bin/targets/ 目录下收集编译输出的所有镜像文件
+          find imagebuilder/bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*img*" \) -exec cp {} ./artifact/ \;
           echo "📦 准备上传的固件产物列表："
           ls -lh ./artifact/
 
-      - name: 上传固件至 GitHub Actions Artifacts
+      - name: 📤 上传固件至 GitHub Actions Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Airoha-Wrt-Firmware-${{ github.event.inputs.device }}

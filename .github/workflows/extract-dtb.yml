@@ -1,4 +1,4 @@
-name: Auto Extract and Release DTB
+name: 📦 Auto Extract and Release DTB
 
 on:
   workflow_dispatch: # 在 GitHub 页面手动触发时显示选项

@@ -44,7 +44,7 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-cpufreq luci-i18n-cpufreq-zh-cn"
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-partexp luci-i18n-partexp-zh-cn"
 
 # passwall代理面板 (passwall)
-CUSTOM_PACKAGES="$CUSTOM_PACKAGES chinadns-ng geoview xray-core sing-box luci-app-passwall luci-i18n-passwall-zh-cn"
+#CUSTOM_PACKAGES="$CUSTOM_PACKAGES chinadns-ng geoview xray-core sing-box luci-app-passwall luci-i18n-passwall-zh-cn"
 
 # poweroffdevice关机 (poweroffdevice)
 #CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-poweroffdevice luci-i18n-poweroffdevice-zh-cn"

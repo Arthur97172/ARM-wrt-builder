@@ -178,12 +178,16 @@ jobs:
       - name: 🚀 执行 Image Builder 固件生成
         run: |
           TARGET_PROFILE="${{ github.event.inputs.device }}"
-          echo "=== 开始使用 Image Builder 构建最终固件 ==="
+          echo "=== 开始使用构建脚本生成最终固件 ==="
           
-          # 切换到 imagebuilder 目录下执行打包命令
+          # 切换到 imagebuilder 目录下
           cd imagebuilder
-          # 执行拼装镜像命令 (保持你原有的配置及可能存在的指令)
-          make image PROFILE="$TARGET_PROFILE" || {
+          
+          # 给予脚本执行权限（以防万一）
+          chmod +x build25.sh
+          
+          # 执行你仓库专属的构建脚本，传入选定的设备 PROFILE
+          ./build25.sh "$TARGET_PROFILE" || {
             echo "❌ 固件打包失败，请检查编译日志或 PROFILE 命名。"
             exit 1
           }

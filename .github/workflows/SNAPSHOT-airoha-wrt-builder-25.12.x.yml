@@ -100,7 +100,7 @@ jobs:
           if [ -n "$KMOD_DIR" ]; then
             FULL_KMOD_URL="${BASE_URL}${KMOD_DIR}/packages.adb"
             echo "✅ 成功匹配 kmods 路径: $FULL_KMOD_URL"
-            # 替换 repositories 文件中的占位符 (修复了原代码中未定义 BUILD_VER 变量的问题，统一采用 FINAL_LUCI_VER)
+            # 替换 repositories 文件中的占位符
             sed -i "s|VERSION_PLACEHOLDER|${{ env.FINAL_LUCI_VER }}|g" imagebuilder/repositories
             sed -i "s|KMOD_PLACEHOLDER|${FULL_KMOD_URL}|g" imagebuilder/repositories
           else
@@ -118,19 +118,48 @@ jobs:
           
           echo "=== 开始硬件 PROFILE 检查: $TARGET_PROFILE ==="
           
-          # 默认情况下，最终编译传递给脚本的 PROFILE
-          FINAL_BUILD_PROFILE="$TARGET_PROFILE"
+          # -------------------------------------------------------------
+          # 【自适应 Profile 嗅探系统】通过 make info 寻找真实可用的官方 Profile
+          # -------------------------------------------------------------
+          cd imagebuilder
+          echo "🔍 正在读取 Image Builder 支持的可用 Profile 列表..."
+          ALL_PROFILES=$(make info 2>/dev/null | grep -E "^[a-zA-Z0-9_-]+$" || true)
+          echo "📋 官方支持的所有 Profile 列表如下："
+          echo "$ALL_PROFILES"
+          
+          IS_NATIVE=false
+          FINAL_BUILD_PROFILE=""
           IS_CLONED=false
           
-          # 如果不是 w1700k，说明是个性化设备，我们采用“借鸡生蛋”策略
-          if [ "$TARGET_PROFILE" != "gemtek-w1700k-ubi" ]; then
-            echo "⚠️ 提示: 检测到自定义设备 [$TARGET_PROFILE] 将借用官方原生 [gemtek-w1700k-ubi] 的 Profile 进行编译！"
-            FINAL_BUILD_PROFILE="gemtek-w1700k-ubi"
-            IS_CLONED=true
+          # 1. 直接检测输入的 PROFILE 是否原生支持
+          if echo "$ALL_PROFILES" | grep -qWx "$TARGET_PROFILE"; then
+            IS_NATIVE=true
+            FINAL_BUILD_PROFILE="$TARGET_PROFILE"
           fi
           
-          # 提取核心名
-          CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
+          # 2. 如果不原生支持，寻找替代的官方 Profile（借鸡生蛋）
+          if [ "$IS_NATIVE" = false ]; then
+            echo "⚠️ 设备 [$TARGET_PROFILE] 不原生存在于列表内。"
+            
+            # 2.1 尝试寻找官方不带 -ubi 后缀的版本 (例如有些官方只注册了 gemtek-w1700k)
+            TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
+            MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -w "${TARGET_CORE}" | head -n 1)
+            
+            # 2.2 如果还是没找到，匹配任何含有 'gemtek' 关键字的可用官方 Profile
+            if [ -z "$MATCHED_PROFILE" ]; then
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1)
+            fi
+            
+            # 2.3 如果连 gemtek 都没，使用默认的 'generic' 或列表中的第一个设备兜底
+            if [ -z "$MATCHED_PROFILE" ]; then
+              MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
+            fi
+            
+            echo "💡 智能化匹配：我们将借用官方原生存在的 [$MATCHED_PROFILE] 作为编译模板！"
+            FINAL_BUILD_PROFILE="$MATCHED_PROFILE"
+            IS_CLONED=true
+          fi
+          cd .. # 返回根工作目录
           
           # -------------------------------------------------------------
           # 【DTB 下载】
@@ -141,6 +170,7 @@ jobs:
           echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
           RELEASE_DATA=$(curl -sL "$API_URL")
           
+          CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
           echo "🔄 正在分析所有适配 [$CORE_NAME] 的 DTB 文件并进行最新时间戳比对..."
           
           LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core "$CORE_NAME" '
@@ -169,7 +199,7 @@ jobs:
           wget -q --show-progress -O ./custom-dtb/custom.dtb "$DOWNLOAD_URL"
           
           # -------------------------------------------------------------
-          # 【强行覆盖】无论当前构建 Profile 是什么，都把下载的自定义 DTB 写入
+          # 【强行覆盖 DTB】
           # -------------------------------------------------------------
           IB_DTB_DIR=$(find imagebuilder -type d -path "*/linux-airoha" | head -n 1)
           if [ -z "$IB_DTB_DIR" ] || [ ! -d "$IB_DTB_DIR" ]; then
@@ -177,15 +207,16 @@ jobs:
             mkdir -p "$IB_DTB_DIR"
           fi
           
-          # 我们把下载到的 DTB 复制为 2 种可能的文件名，确保无论 Image Builder 读哪一个，都是我们的自定义 DTB！
+          # 1. 拷贝目标设备名字的 DTB（以防万一）
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${TARGET_PROFILE}.dtb"
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_NAME}.dtb"
           
-          # 如果是借用 w1700k 编译，我们就把 w1700k 的 DTB 实体给直接掉包：
+          # 2. 如果是借用其他原生 Profile 编译，将原生 Profile 的所有可能 DTB 名字全部替换为下载的 DTB！
           if [ "$IS_CLONED" = true ]; then
-            echo "🔥 正在将自定义设备树强行覆盖 w1700k 的设备树文件..."
-            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-gemtek-w1700k-ubi.dtb"
-            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-gemtek-w1700k.dtb"
+            REF_CORE=$(echo "$FINAL_BUILD_PROFILE" | sed 's/-ubi//g')
+            echo "🔥 正在将自定义设备树强行覆盖借用模板的设备树 ($FINAL_BUILD_PROFILE) ..."
+            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${FINAL_BUILD_PROFILE}.dtb"
+            cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${REF_CORE}.dtb"
           fi
           
           echo "✅ 自定义设备树注入与掉包成功！"
@@ -193,10 +224,11 @@ jobs:
           # 传递输出参数给后续步骤
           echo "build_profile=${FINAL_BUILD_PROFILE}" >> $GITHUB_OUTPUT
           echo "is_cloned=${IS_CLONED}" >> $GITHUB_OUTPUT
+          echo "cloned_from=${FINAL_BUILD_PROFILE}" >> $GITHUB_OUTPUT
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |
-          # 读取上一步确认的可用 PROFILE (对于 xr1710g-ubi，这里会被“欺骗”并安全传入 gemtek-w1700k-ubi)
+          # 获取动态匹配到且官方绝对认识的真实 Profile 名
           FINAL_PROFILE="${{ steps.custom_dtb_prepare.outputs.build_profile }}"
           echo "=== 开始使用构建脚本生成最终固件，实际使用的 Profile 为: $FINAL_PROFILE ==="
           
@@ -217,14 +249,19 @@ jobs:
           if [ -d "$OUT_DIR" ]; then
             cd "$OUT_DIR"
             
-            # 判断是否进行了设备借用编译
+            # 如果进行了借鸡生蛋编译，我们需要把产出固件名中的“借用模板名”恢复成用户想要的“目标设备名”
             if [ "${{ steps.custom_dtb_prepare.outputs.is_cloned }}" = "true" ]; then
-              echo "🔄 检测到借用编译，正在重命名输出固件为用户请求的设备名字: ${{ github.event.inputs.device }}"
+              REF_NAME="${{ steps.custom_dtb_prepare.outputs.cloned_from }}"
+              # 清理可能带有的 -ubi 后缀用来做重命名匹配
+              REF_CORE=$(echo "$REF_NAME" | sed 's/-ubi//g')
+              TARGET_NAME="${{ github.event.inputs.device }}"
               
-              # 遍历所有打包好的固件，把文件名里的 w1700k 替换为输入的目标设备名字（如 xr1710g）
-              for file in *gemtek-w1700k*; do
+              echo "🔄 检测到借用编译，正在重命名输出固件。将 $REF_CORE 替换为 $TARGET_NAME"
+              
+              # 循环执行重命名
+              for file in *${REF_CORE}*; do
                 if [ -f "$file" ]; then
-                  new_file=$(echo "$file" | sed "s/gemtek-w1700k/${{ github.event.inputs.device }}/g" | sed "s/-ubi-ubi/-ubi/g")
+                  new_file=$(echo "$file" | sed "s/${REF_CORE}/${TARGET_NAME}/g" | sed "s/-ubi-ubi/-ubi/g")
                   echo "重命名: $file -> $new_file"
                   mv "$file" "$new_file"
                 fi
@@ -233,7 +270,7 @@ jobs:
             cd - # 返回工作流根目录
           fi
           
-          # 从 imagebuilder/bin/targets/ 目录下收集编译输出的所有镜像文件
+          # 收集编译输出的所有镜像文件
           find imagebuilder/bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*img*" \) -exec cp {} ./artifact/ \;
           echo "📦 准备上传的固件产物列表："
           ls -lh ./artifact/

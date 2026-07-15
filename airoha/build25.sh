@@ -7,17 +7,14 @@ PROFILE=${1:-"gemtek_xr1710g-ubi"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 
 echo "Target Profile: $PROFILE"
+echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
 echo "Include Docker: $INCLUDE_DOCKER"
 
 # ============================================
 # 步骤1: 加载第三方插件配置
 # ============================================
 CUSTOM_PACKAGES=""
-if [ -f "apk-custom-packages.sh" ]; then
-    source apk-custom-packages.sh
-elif [ -f "../apk-custom-packages.sh" ]; then
-    source ../apk-custom-packages.sh
-fi
+source apk-custom-packages.sh
 
 HAS_CUSTOM_PACKAGES="no"
 if [ -n "$CUSTOM_PACKAGES" ]; then
@@ -31,17 +28,35 @@ PACKAGES=""
 # [核心系统 - 不含 libc/libgcc,由 base 系统提供]
 PACKAGES="$PACKAGES base-files uci ubus dropbear logd mtd bash htop curl wget ca-bundle ca-certificates"
 PACKAGES="$PACKAGES dnsmasq-full firewall4 nftables kmod-nft-offload"
-PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe wpad-openssl"
-PACKAGES="$PACKAGES block-mount lsblk blkid"
+PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls wpad-openssl libustream-openssl"
+
+# [硬件驱动]
+PACKAGES="$PACKAGES -kmod-ath10k-sdio kmod-ath10k"
+PACKAGES="$PACKAGES kmod-ata-ahci kmod-ata-ahci-dwc kmod-mmc kmod-r8125 kmod-r8168 kmod-r8169 r8169-firmware"
+
+# [磁盘与文件系统]
+PACKAGES="$PACKAGES block-mount fdisk lsblk blkid parted resize2fs smartmontools"
+PACKAGES="$PACKAGES kmod-fs-ext4 kmod-fs-vfat kmod-fs-ntfs3 kmod-fs-exfat kmod-fs-btrfs kmod-fs-f2fs"
+
+# [无线驱动]
+PACKAGES="$PACKAGES kmod-brcmfmac kmod-brcmsmac"
+PACKAGES="$PACKAGES brcmfmac-firmware-usb brcmfmac-firmware-43430-sdio brcmfmac-firmware-43455-sdio"
+PACKAGES="$PACKAGES kmod-mac80211"
+PACKAGES="$PACKAGES kmod-mt7921-common kmod-mt7921-firmware kmod-mt7921e kmod-mt7921u"
+PACKAGES="$PACKAGES kmod-mt7922-firmware kmod-mt7925-common kmod-mt7925-firmware kmod-mt7925e kmod-mt7925u"
+PACKAGES="$PACKAGES kmod-mt792x-common kmod-mt792x-usb"
+PACKAGES="$PACKAGES kmod-mt7992-23-firmware kmod-mt7992-firmware"
+PACKAGES="$PACKAGES kmod-mt7996-233-firmware kmod-mt7996-firmware kmod-mt7996-firmware-common kmod-mt7996e kmod-mtk-t7xx"
 
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"
-#PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
+PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
 
 # [功能插件]
-#PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
-#PACKAGES="$PACKAGES luci-app-wol luci-i18n-wol-zh-cn"
-#PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
+PACKAGES="$PACKAGES luci-app-samba4 luci-i18n-samba4-zh-cn"
+PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
+PACKAGES="$PACKAGES luci-app-wol luci-i18n-wol-zh-cn"
+PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-app-package-manager luci-i18n-package-manager-zh-cn"
 
 # Docker 插件
@@ -49,9 +64,6 @@ if [ "$INCLUDE_DOCKER" = "yes" ]; then
     echo "🐳 Docker enabled, adding docker packages"
     PACKAGES="$PACKAGES docker docker-compose luci-app-dockerman luci-i18n-dockerman-zh-cn"
 fi
-
-# 🔴 核心修复点 1：在基础包中强行排除引发冲突的 rtl826x 相关固件和驱动
-PACKAGES="$PACKAGES -rtl826x-firmware -kmod-rtl826x"
 
 # ============================================
 # 步骤2: 处理第三方插件(最佳努力,失败不阻断构建)
@@ -74,14 +86,11 @@ fi
 if [ "$THIRD_PARTY_OK" = "1" ]; then
     # 创建临时目录存放第三方 APK
     mkdir -p thirdparty
-    
-    # 🔴 核心修复点 2：在外部缓存克隆时屏蔽可能引入冲突的 rtl826x 包
-    SKIP_APKS="*rtl826x*"
-    
+
     # 复制第三方 APK 到临时目录(不覆盖 base 包)
+    # airoha/an7581 是arch64_cortex-a53
     echo "复制第三方 APK 到 thirdparty/ 目录..."
     mkdir -p apk-merged thirdparty
-
     if [ -d /tmp/store-repo/apk/aarch64_cortex-a53 ]; then
         find /tmp/store-repo/apk/aarch64_cortex-a53 -name '*.apk' -exec cp -t apk-merged {} + 2>/dev/null || true
     fi
@@ -103,8 +112,13 @@ fi
 
 if [ "$THIRD_PARTY_OK" = "1" ]; then
     # 把第三方 APK 物理放入 ImageBuilder 的 packages/ 目录,并显式重建
+    # SIGNED packages.adb 索引。IB 默认的 `apk mkndx` 在出错时静默吞 stderr,
+    # 后面 make image 会找不到包。
     echo "复制第三方 APK 到 imagebuilder/packages/ ..."
     mkdir -p packages
+
+    # 排除已知不可用的 APK(glob),空就是不过滤
+    SKIP_APKS=""
 
     APK_BIN="staging_dir/host/bin/apk"
     APK_KEYS_DIR="keys"
@@ -113,7 +127,10 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         APK_SIGN_KEY="$APK_KEYS_DIR/build_key.apk.sec"
     fi
 
-    # 规范化 APK 名称
+    # 把 apk 重命名为 canonical 名称 "{name}-{version}.apk"。apk-tools 在
+    # add 时按 canonical 名查包,文件名 (比如带 -x86_64 后缀) 与 adb 里
+    # 登记的 (name-version) 不一致,会抛 "package mentioned in index not
+    # found"。这里用 `apk adbdump` 读 metadata 里的 name+version 后重命名。
     echo "🔖 重命名 apk 为 canonical 名称(name-version.apk)..."
     canoned=0
     cached=0
@@ -126,8 +143,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
             case "$base" in $s) skip=1 ;; esac
         done
         if [ "$skip" = "1" ]; then
-            echo "   ↷ 过滤跳过冲突包: $base"
-            skipped=$((skipped+1))
+            echo "  ↷ 跳过: $base"
             continue
         fi
         canon_name=$("$APK_BIN" adbdump "$f" 2>/dev/null \
@@ -146,11 +162,13 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         cp -f "$f" "packages/$target"
         canoned=$((canoned+1))
     done
-    echo "📦 重命名 $canoned 新 apk,缓存 $cached 个,过滤 $skipped 个"
+    echo "📦 重命名 $canoned 新 apk,缓存 $cached 个,跳过 $skipped 个"
     PKG_IN_POOL=$(ls packages/*.apk 2>/dev/null | wc -l)
     echo "✅ 第三方 APK 已合并到 packages/ (池中现共 $PKG_IN_POOL 个文件)"
 
-    # 准备签名密钥
+    # 在 mkndx 之前先准备好 EC 签名 key。IB Makefile 的 _check_keys 目标
+    # 是在 mkndx 之后才生成 keys,而我们的 mkndx 在这之前运行,所以
+    # 生成的 packages.adb 是未签名的,后面 apk add 会判 UNTRUSTED。
     OPENSSL_BIN="staging_dir/host/bin/openssl"
     NE_KEY="$APK_KEYS_DIR/local-private-key.pem"
     NEED_KEY_GEN=0
@@ -163,15 +181,19 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         if ! "$OPENSSL_BIN" ecparam -name prime256v1 -genkey -noout -out "$NE_KEY" 2>/dev/null; then
             echo "⚠️ ecparam 生成私钥失败,继续依赖 IB 的 _check_keys"
         else
+            # IB sed: '1s/^/untrusted comment: Local build key\n/'
             sed -i '1s/^/untrusted comment: Local build key\n/' "$NE_KEY" 2>/dev/null
             if "$OPENSSL_BIN" ec -in "$NE_KEY" -pubout > "$APK_KEYS_DIR/local-public-key.pem" 2>/dev/null; then
                 sed -i '1s/^/untrusted comment: Local build key\n/' "$APK_KEYS_DIR/local-public-key.pem" 2>/dev/null
+                ls -la "$APK_KEYS_DIR/"
                 echo "✅ EC key 就绪:$NE_KEY"
+            else
+                echo "⚠️ 导出公钥失败,继续依赖 IB 的 _check_keys"
             fi
         fi
     fi
 
-    # 重建索引
+    # 在 IB 子目录内运行 ../staging_dir/host/bin/apk mkndx。
     run_mkndx() {
         local args=("$@")
         local cmd=(../"$APK_BIN" mkndx)
@@ -184,6 +206,8 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
     }
 
     if [ -x "$APK_BIN" ]; then
+        # IB 25.12.x 默认 CONFIG_SIGNATURE_CHECK=y,所有 packages.adb 必
+        # 须用 local-private-key.pem 签名,否则 apk 读到时 UNTRUSTED。
         APK_FILES=()
         for f in packages/*.apk; do
             [ -e "$f" ] || continue
@@ -218,18 +242,22 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
                 if [ "${#APK_FILES[@]}" -eq 0 ]; then
                     echo "⚠️ 没有健康的 apk 留下来,跳过重建"
                 elif (cd packages && run_mkndx "${APK_FILES[@]}"); then
-                    echo "✅ 已用剩余的健康 apk 重建 SIGNED 索引"
+                    echo "✅ 已用剩余的健康 apk 重建 SIGNED 索引(损坏 apk 的功能将不可用)"
+                else
+                    echo "⚠️ 即便移出损坏 apk 后仍无法生成索引,继续依赖 IB 自动重建"
                 fi
             fi
         fi
 
+        # 把 packages.adb 的 mtime 设到所有 *.apk 之后,避免 IB 因
+        # mkndx 旧而重建产生未签名索引。
         if [ -f packages/packages.adb ]; then
             touch -d "@$(($(date +%s) + 60))" packages/packages.adb 2>/dev/null || \
                 touch packages/packages.adb
             echo "🔒 packages.adb mtime 已更新,IB 不会重建"
         fi
     else
-        echo "⚠️ 找不到 $APK_BIN,继续依赖 IB 自动重建"
+        echo "⚠️ 找不到 $APK_BIN,继续依赖 IB 自动重建(不推荐)"
     fi
 fi
 
@@ -258,17 +286,29 @@ fi
 
 # ============================================
 # 步骤5: 关闭 apk 签名校验
+#
+# IB 25.12 .config 默认 CONFIG_SIGNATURE_CHECK=y。我们的第三方 apk 由
+# 不同作者发布,IB 的 apk add 读 packages.adb 时会 UNTRUSTED 整库丢弃。
+#
+# `make image CONFIG_SIGNATURE_CHECK=` 在 GHA 下不能让 apk add 真的
+# 接收 --allow-untrusted,因为 IB Makefile 在 child make 之前
+# `unset MAKEFLAGS`,把 cmdline override 抹掉;child make 重新读 .config,
+# $(if $(CONFIG_SIGNATURE_CHECK),,--allow-untrusted) 退化成 strict-mode。
+#
+# 改方案: 直接 sed 改 .config 把 CONFIG_SIGNATURE_CHECK 设为空,
+# parent 和 child 都读到空,apk add 拿到 --allow-untrusted。
 # ============================================
 if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
     cp .config .config.bak.imm
     sed -i 's/^CONFIG_SIGNATURE_CHECK=y$/CONFIG_SIGNATURE_CHECK=/' .config
     echo "🔓 .config: CONFIG_SIGNATURE_CHECK 已置空(原值备份到 .config.bak.imm)"
+    grep -n '^CONFIG_SIGNATURE_CHECK' .config
 fi
 
 # ============================================
 # 步骤6: 执行 make image
 # ============================================
-make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files"
+make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

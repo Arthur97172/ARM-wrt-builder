@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wrt 25.12.x Rockchip 构建脚本 (APK 格式)
+# Wrt 25.12.x airoha 构建脚本 (APK 格式)
 # 在 imagebuilder 目录下运行
 
 # --- 接收外部参数 ---

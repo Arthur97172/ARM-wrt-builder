@@ -35,7 +35,7 @@ on:
 # 核心环境变量
 env:
   # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
-  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && 'snapshot' || inputs.luci_version }}
+  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && 'snapshots' || inputs.luci_version }}
   FINAL_WRT: ${{ inputs.wrt_version }}
   DOCKER: ${{ inputs.include_docker }}
 

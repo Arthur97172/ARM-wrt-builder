@@ -36,12 +36,12 @@ PACKAGES="$PACKAGES block-mount lsblk blkid"
 
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"
-PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
+#PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
 
 # [功能插件]
-PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
-PACKAGES="$PACKAGES luci-app-wol luci-i18n-wol-zh-cn"
-PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
+#PACKAGES="$PACKAGES luci-app-upnp luci-i18n-upnp-zh-cn"
+#PACKAGES="$PACKAGES luci-app-wol luci-i18n-wol-zh-cn"
+#PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
 PACKAGES="$PACKAGES luci-app-package-manager luci-i18n-package-manager-zh-cn"
 
 # Docker 插件
@@ -105,9 +105,6 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
     # 把第三方 APK 物理放入 ImageBuilder 的 packages/ 目录,并显式重建
     echo "复制第三方 APK 到 imagebuilder/packages/ ..."
     mkdir -p packages
-
-    # 🔴 核心修复点 3：再次确保处理过程过滤列表包含目标冲突包
-    SKIP_APKS="*rtl826x*"
 
     APK_BIN="staging_dir/host/bin/apk"
     APK_KEYS_DIR="keys"

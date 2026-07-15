@@ -34,7 +34,6 @@ PACKAGES="$PACKAGES block-mount lsblk blkid kmod-usb-core kmod-usb-ehci kmod-usb
 
 # [Web 界面]
 PACKAGES="$PACKAGES luci luci-base luci-i18n-base-zh-cn luci-mod-admin-full"
-PACKAGES="$PACKAGES luci-app-cpufreq luci-i18n-cpufreq-zh-cn"
 PACKAGES="$PACKAGES luci-app-ttyd luci-i18n-ttyd-zh-cn"
 
 # [功能插件]

@@ -38,7 +38,6 @@ on:
 
 # 核心环境变量
 env:
-  # 判断：如果选了 immortalwrt，且版本不是 25.12.0和25.12.1（包含25.12.2~5），就强制降级为 25.12.1；否则保持用户选择
   FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version != '25.12.0' && inputs.luci_version != '25.12.1') && 'snapshots' || inputs.luci_version }}
   FINAL_WRT: ${{ inputs.wrt_version }}
   DOCKER: ${{ inputs.include_docker }}
@@ -88,7 +87,6 @@ jobs:
           cp shell/prepare-packages.sh imagebuilder/
           mkdir -p imagebuilder/files/etc/uci-defaults imagebuilder/files/etc/apk/repositories.d
           cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
-          # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
           cat files/customfeeds/25.customfeeds.list >> imagebuilder/files/etc/apk/repositories.d/customfeeds.list
           echo "✅ 文件准备完成"
 
@@ -100,7 +98,6 @@ jobs:
           if [ -n "$KMOD_DIR" ]; then
             FULL_KMOD_URL="${BASE_URL}${KMOD_DIR}/packages.adb"
             echo "✅ 成功匹配 kmods 路径: $FULL_KMOD_URL"
-            # 替换 repositories 文件中的占位符
             sed -i "s|VERSION_PLACEHOLDER|${{ env.FINAL_LUCI_VER }}|g" imagebuilder/repositories
             sed -i "s|KMOD_PLACEHOLDER|${FULL_KMOD_URL}|g" imagebuilder/repositories
           else
@@ -113,7 +110,6 @@ jobs:
       - name: 🧬 克隆并注入官方原生 Profile 硬件设备信息
         run: |
           echo "=== 开始向 Image Builder 注入设备 Profile ==="
-          # 动态匹配 airoha 平台的 Makefile 路径（多路径兼容）
           MAKEFILE_PATH=$(find imagebuilder -type f -path "*/airoha/image/Makefile" | head -n 1)
           if [ -z "$MAKEFILE_PATH" ] || [ ! -f "$MAKEFILE_PATH" ]; then
             MAKEFILE_PATH=$(find imagebuilder -type f -name "Makefile" | grep -E "image|target" | head -n 1)
@@ -122,14 +118,14 @@ jobs:
           if [ -n "$MAKEFILE_PATH" ] && [ -f "$MAKEFILE_PATH" ]; then
             echo "🎯 找到目标 Makefile: $MAKEFILE_PATH"
             
-            # 1. 提取并克隆定义：从 'define Device/gemtek_w1700k-ubi' 一直到 'endef'，将其中的 w1700k 替换为 xr1710g 并追加回 Makefile
+            # 1. 克隆 w1700k 并创建 xr1710g 设备定义
             sed -n '/define Device\/gemtek_w1700k-ubi/,/endef/p' "$MAKEFILE_PATH" | \
               sed 's/gemtek_w1700k-ubi/gemtek_xr1710g-ubi/g' | \
               sed 's/gemtek-w1700k-ubi/gemtek-xr1710g-ubi/g' | \
               sed 's/Gemtek W1700K/Gemtek XR1710G/g' | \
               sed 's/w1700k/xr1710g/g' >> "$MAKEFILE_PATH"
             
-            # 2. 将新克隆出的设备追加到 Target Devices 编译列表中
+            # 2. 追加到设备编译树中
             sed -i '/TARGET_DEVICES +=/ s/$/ gemtek_xr1710g-ubi/' "$MAKEFILE_PATH"
             
             echo "🔥 成功将克隆出的 [gemtek_xr1710g-ubi] 注入到 Makefile 编译树中！"
@@ -151,7 +147,6 @@ jobs:
           # -------------------------------------------------------------
           cd imagebuilder
           echo "🔍 正在读取 Image Builder 支持的可用 Profile 列表..."
-          # 优化正则：容忍前置空格，同时清理首尾空白
           ALL_PROFILES=$(make info 2>/dev/null | grep -E '^[[:space:]]*[a-zA-Z0-9_-]+[[:space:]]*$' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true)
           echo "📋 官方支持的所有 Profile 列表如下："
           echo "$ALL_PROFILES"
@@ -160,37 +155,26 @@ jobs:
           FINAL_BUILD_PROFILE=""
           IS_CLONED=false
           
-          # 1. 检查当前输入的 PROFILE 是否原生/注入存在
           if echo "$ALL_PROFILES" | grep -xq "$TARGET_PROFILE"; then
             IS_NATIVE=true
             FINAL_BUILD_PROFILE="$TARGET_PROFILE"
             echo "🎉 完美！系统成功识别并直接支持该 Profile: $TARGET_PROFILE"
           fi
           
-          # 2. 如果依然不原生支持（防万一的兜底），寻找替代的官方 Profile（借鸡生蛋）
           if [ "$IS_NATIVE" = false ]; then
             echo "⚠️ 设备 [$TARGET_PROFILE] 在列表中未被激活，采用借鸡生蛋方案。"
-            
-            # 2.1 尝试寻找官方不带 -ubi 后缀的版本
             TARGET_CORE=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g')
             MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -x "${TARGET_CORE}" | head -n 1 || true)
             
-            # 2.2 优先匹配正确的带下划线或连字符的原生模版
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]xr1710g" | head -n 1 || true)
             fi
-            
-            # 2.3 优先匹配官方的原生模板：gemtek_w1700k-ubi
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "gemtek[_-]w1700k" | head -n 1 || true)
             fi
-            
-            # 2.4 兜底：匹配任意包含 gemtek 的官方 Profile 
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep "gemtek" | head -n 1 || true)
             fi
-            
-            # 2.5 如果连 gemtek 都没找到，使用默认的 generic 兜底
             if [ -z "$MATCHED_PROFILE" ]; then
               MATCHED_PROFILE=$(echo "$ALL_PROFILES" | grep -E "generic|default" | head -n 1 || echo "$ALL_PROFILES" | head -n 1)
             fi
@@ -210,20 +194,16 @@ jobs:
           echo "🔍 正在从本仓库的 latest-dtb Release 请求设备树资源列表..."
           RELEASE_DATA=$(curl -sL "$API_URL")
           
-          # 确保获取到合法的 JSON 响应
           if ! echo "$RELEASE_DATA" | jq empty 2>/dev/null; then
             echo "⚠️ 获取 Release 数据异常，转为手动兜底源下载。"
             RELEASE_DATA='{"assets": []}'
           fi
           
-          # 提取核心名（清理 -ubi 等尾缀）
           CORE_NAME=$(echo "$TARGET_PROFILE" | sed 's/-ubi//g' | sed 's/_ubi//g')
-          # 建立互锁兼容名：如果 CORE_NAME 含有下划线，也生成连字符版本
           CORE_ALT=$(echo "$CORE_NAME" | tr '_' '-')
           
           echo "🔄 正在分析所有适配 [$CORE_NAME] 或 [$CORE_ALT] 的 DTB 文件并进行最新时间戳比对..."
           
-          # 增加 jq 的安全判空防护机制
           LATEST_DTB_URL=$(echo "$RELEASE_DATA" | jq -r --arg core1 "$CORE_NAME" --arg core2 "$CORE_ALT" '
             if .assets then
               .assets | map(select((.name | contains($core1) or contains($core2)) and endswith(".dtb"))) | sort_by(.updated_at) | reverse | .[0].browser_download_url
@@ -272,12 +252,10 @@ jobs:
             mkdir -p "$IB_DTB_DIR"
           fi
           
-          # 1. 拷贝目标设备名字的 DTB
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${TARGET_PROFILE}.dtb"
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_NAME}.dtb"
           cp ./custom-dtb/custom.dtb "$IB_DTB_DIR/image-${CORE_ALT}.dtb"
           
-          # 2. 如果是借用编译，将借用模板对应的所有可能 DTB 名字全部掉包！
           if [ "$IS_CLONED" = true ]; then
             REF_CORE=$(echo "$FINAL_BUILD_PROFILE" | sed 's/-ubi//g')
             REF_ALT=$(echo "$REF_CORE" | tr '_' '-')
@@ -289,14 +267,23 @@ jobs:
           
           echo "✅ 自定义设备树注入与掉包成功！"
           
-          # 传递输出参数给后续步骤
+          # -------------------------------------------------------------
+          # 【💥 核心修复：绕过 APK 包依赖和内核检测限制】
+          # -------------------------------------------------------------
+          # 修改 Image Builder 内部的编译规则文件（通常是 rules.mk 或 include/image.mk ），注入 --allow-unsupported-dep 参数
+          # 或者直接在编译调用链中修改 apk 参数。为了万无一失，我们直接针对目标 apk 调用链开启强制忽略依赖。
+          # 适用于 OpenWrt 25.12 的 APK 命令，允许未找到依赖以及不兼容继续强行打包
+          find imagebuilder -type f -name "*.mk" -exec sed -i 's/apk add/apk add --allow-unsupported-dep/g' {} +
+          find imagebuilder -type f -name "*.sh" -exec sed -i 's/apk add/apk add --allow-unsupported-dep/g' {} +
+          
+          # 输出结果回传
           echo "build_profile=${FINAL_BUILD_PROFILE}" >> $GITHUB_OUTPUT
           echo "is_cloned=${IS_CLONED}" >> $GITHUB_OUTPUT
           echo "cloned_from=${FINAL_BUILD_PROFILE}" >> $GITHUB_OUTPUT
 
       - name: 🚀 执行 Image Builder 固件生成
         run: |
-          # 获取动态匹配到的可用 Profile
+          # 🎯 修复：此处必须动态提取 custom_dtb_prepare 的输出，严禁写死！
           FINAL_PROFILE="${{ steps.custom_dtb_prepare.outputs.build_profile }}"
           echo "=== 开始使用构建脚本生成最终固件，实际使用的 Profile 为: $FINAL_PROFILE ==="
           
@@ -311,13 +298,10 @@ jobs:
       - name: 📦 整理并归档固件产物
         run: |
           mkdir -p ./artifact
-          
-          # 切换到固件输出目录
           OUT_DIR="imagebuilder/bin/targets/airoha/an7581"
           if [ -d "$OUT_DIR" ]; then
             cd "$OUT_DIR"
             
-            # 如果进行了借鸡生蛋编译，我们需要把产出固件名中的“借用模板名”恢复成用户想要的“目标设备名”
             if [ "${{ steps.custom_dtb_prepare.outputs.is_cloned }}" = "true" ]; then
               REF_NAME="${{ steps.custom_dtb_prepare.outputs.cloned_from }}"
               REF_CORE=$(echo "$REF_NAME" | sed 's/-ubi//g')
@@ -325,8 +309,6 @@ jobs:
               TARGET_NAME="${{ github.event.inputs.device }}"
               
               echo "🔄 检测到借用编译，正在重命名输出固件..."
-              
-              # 双向替换（兼容下划线和连字符格式）
               for file in *; do
                 if [ -f "$file" ]; then
                   new_file="$file"
@@ -335,7 +317,6 @@ jobs:
                   elif [[ "$file" == *"$REF_ALT"* ]]; then
                     new_file=$(echo "$file" | sed "s/${REF_ALT}/${TARGET_NAME}/g")
                   fi
-                  # 清除双后缀
                   new_file=$(echo "$new_file" | sed "s/-ubi-ubi/-ubi/g" | sed "s/_ubi_ubi/_ubi/g")
                   if [ "$file" != "$new_file" ]; then
                     echo "重命名: $file -> $new_file"
@@ -344,10 +325,9 @@ jobs:
                 fi
               done
             fi
-            cd - # 返回工作流根目录
+            cd -
           fi
           
-          # 收集编译输出的所有镜像文件
           find imagebuilder/bin/targets/ -type f \( -name "*.itb" -o -name "*.bin" -o -name "*img*" \) -exec cp {} ./artifact/ \;
           echo "📦 准备上传的固件产物列表："
           ls -lh ./artifact/

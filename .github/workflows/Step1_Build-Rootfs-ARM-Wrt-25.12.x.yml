@@ -141,25 +141,11 @@ jobs:
 
         chmod +x imagebuilder/apk-custom-packages.sh
         cp shell/prepare-packages.sh imagebuilder/
-        
-        # 复制本地 apk 插件包（【关键修复点】：增加目录存在性校验，防止 find 报错）
-        if [ -d "files/packages" ]; then
-          echo "📂 检测到本地插件目录，开始复制 apk 文件..."
-          find files/packages/ -name "*.apk" -exec cp {} imagebuilder/packages/ \;
-        else
-          echo "⏭️ 未检测到 files/packages 目录，跳过本地 apk 复制"
-        fi
-        
         mkdir -p imagebuilder/files/etc/uci-defaults imagebuilder/files/etc/apk/repositories.d
         cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
         # 追加自定义源到 APK repositories（FIRMWARE 内 /etc/apk/repositories 会用这个）
         cat files/customfeeds/25.customfeeds.list >> imagebuilder/files/etc/apk/repositories.d/customfeeds.list
         echo "✅ 文件准备完成"
-
-        cd imagebuilder
-        sed -i 's/# CONFIG_TARGET_ROOTFS_TARGZ is not set/CONFIG_TARGET_ROOTFS_TARGZ=y/' .config
-        sed -i "s|CONFIG_TARGET_ROOTFS_SQUASHFS=.*|# CONFIG_TARGET_ROOTFS_SQUASHFS is not set|g" .config
-        sed -i "s|CONFIG_TARGET_IMAGES_GZIP=.*|# CONFIG_TARGET_IMAGES_GZIP is not set|g" .config
 
     - name: ⚙️ 动态获取 Kmod 哈希并更新配置
       run: |

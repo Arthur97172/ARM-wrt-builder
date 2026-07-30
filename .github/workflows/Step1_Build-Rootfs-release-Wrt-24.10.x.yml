@@ -1,8 +1,16 @@
-name: 💿 Step1_Build-Rootfs-release-Wrt
+name: 💿 Step1_Build-Rootfs-release-Wrt-24.10.x
 
 on:
   workflow_dispatch:
     inputs:
+      wrt_version:
+        description: "选择OpenWrt/Immortalwrt"
+        required: true
+        default: "immortalwrt"
+        type: choice
+        options:
+          - 'immortalwrt'
+          - 'openwrt'
       luci_version:
         description: "选择luci版本"
         required: true
@@ -36,7 +44,12 @@ on:
         default: '192.168.10.1'
 
 env:
-  VERSION: ${{ inputs.luci_version }}
+  # 判断：如果是 immortalwrt，且版本等于 24.10.7或者24.10.8，则强制降级为 24.10.6；否则保持用户选择
+  FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && (inputs.luci_version == '24.10.7' || inputs.luci_version == '24.10.8')) && '24.10.6' || inputs.luci_version }}
+  #FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version == '24.10.7') && '24.10.6' || inputs.luci_version }}
+  FINAL_WRT: ${{ inputs.luci_version }}
+  WRT_NAME: ${{ (inputs.wrt_version == 'openwrt') && 'OpenWrt' || 'ImmortalWrt' }}
+
 
 jobs:
   build:
@@ -60,8 +73,8 @@ jobs:
         echo "当前网络配置路径: $CONFIG_PATH"
         
         # 1. 替换版本号占位符
-        sed -i "s/版本号/${{ env.VERSION }}/g" "$CONFIG_PATH"
-        [ -f "./files/etc/banner" ] && sed -i "s/版本号/${{ env.VERSION }}/g" "./files/etc/banner"
+        sed -i "s/版本号/${{ env.FINAL_LUCI_VER }}/g" "$CONFIG_PATH"
+        [ -f "./files/etc/banner" ] && sed -i "s/版本号/${{ env.FINAL_LUCI_VER }}/g" "./files/etc/banner"
 
         # 2. 网络逻辑配置 (关键修改点：不再删除行，改用关键词替换)
         if [ "${{ inputs.network_settings }}" = "static" ]; then
@@ -77,7 +90,7 @@ jobs:
         fi
 
         # 3. 替换脚本末尾的描述信息
-        sed -i "s/VERXXXX/${{ env.VERSION }}/g" "$CONFIG_PATH"
+        sed -i "s/VERXXXX/${{ env.FINAL_LUCI_VER }}/g" "$CONFIG_PATH"
         
         echo "✅ 配置修改完成，输出预览："
         cat "$CONFIG_PATH"
@@ -89,31 +102,9 @@ jobs:
 
     - name: ⏬ 下载 ImageBuilder
      # 必须在这里添加这个 env 块
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        BUILD_VER="${{ inputs.build_version }}"
-        REPO="${{ github.repository }}"
-        TAG="iStoreOS-Imagebuilder"
-        TARGET_SUFFIX="istoreos-imagebuilder-armsr-armv8.Linux-x86_64.tar.zst"
-
-        if [ "$BUILD_VER" = "latest" ]; then
-          echo "🔍 正在从你的 GitHub Release 中寻找最新备份..."
-          
-          # 获取资产列表 -> 过滤出 imagebuilder 文件 -> 按名称倒序排序 -> 取第一个
-          LATEST_FILE=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep "$TARGET_SUFFIX" | sort -r | head -n 1)
-          
-          if [ -z "$LATEST_FILE" ]; then
-            echo "❌ 错误：在 Release 标签 $TAG 下没找到任何备份文件，请检查同步 Workflow 是否成功运行过。"
-            exit 1
-          fi
-          
-          echo "✅ 找到最新的备份文件: $LATEST_FILE"
-          URL="https://github.com/$REPO/releases/download/$TAG/$LATEST_FILE"
-        else
-          echo "固定版本模式：准备下载 $BUILD_VER 备份"
-          URL="https://github.com/$REPO/releases/download/$TAG/${BUILD_VER}-${TARGET_SUFFIX}"
-        fi
+        URL="https://downloads.${{ env.FINAL_WRT }}.org/releases/${{ env.FINAL_LUCI_VER }}/targets/armsr/armv8/${{ env.FINAL_WRT }}-imagebuilder-${{ env.FINAL_LUCI_VER }}-armsr-armv8.Linux-x86_64.tar.zst"
+        curl -Lf -o imagebuilder.tar.zst "$URL"
 
         echo "正在下载: $URL"
         # 使用 -f 确保如果文件不存在时报错停止，而不是下载一个错误页面
@@ -127,7 +118,7 @@ jobs:
     - name: 🔄 复制并设置必备文件
       run: |
         # ⚠️ 确保这里复制了 repositories.conf
-        cp arm64/{iso_build24.sh,Makefile} imagebuilder/
+        cp arm64/{build24.sh,Makefile} imagebuilder/
         # 如果你的 repositories.conf 在根目录或 arm64 目录下，请确保路径正确
         [ -f "repositories.conf" ] && cp repositories.conf imagebuilder/ || cp arm64/repositories.conf imagebuilder/
         
@@ -150,9 +141,9 @@ jobs:
 
     - name: ⚙️ 动态获取 Kmod 哈希并更新配置
       run: |
-        BUILD_VER="${{ env.VERSION }}"
+        BUILD_VER="${{ env.FINAL_LUCI_VER }}"
         # 确保基础路径正确（ARM 架构路径）
-        BASE_URL="https://downloads.openwrt.org/releases/${BUILD_VER}/targets/armsr/armv8/kmods/"
+        BASE_URL="https://downloads.${{ env.FINAL_WRT }}.org/releases/${{ env.FINAL_LUCI_VER }}/targets/armsr/armv8/kmods/"
         
         echo "正在从 $BASE_URL 获取最新的内核哈希..."
         KMOD_DIR=$(curl -sL $BASE_URL | grep -oE "[0-9.-]+-[a-f0-9]{32}" | head -n 1)
@@ -182,21 +173,21 @@ jobs:
           exit 1
         fi
 
-    - name: 🧱 构建iStoreOS-rootfs
+    - name: 🧱 构建Wrt-rootfs
       working-directory: ./imagebuilder
-      run: bash ./iso_build24.sh
+      run: bash ./build24.sh
 
     - name: 🚀 上传到 Release
       uses: softprops/action-gh-release@v2.2.1
       with:
-        tag_name: iStoreOS-ARM-${{ env.VERSION }}-RELEASE-${{ inputs.network_settings }}
+        tag_name: ${{ env.FINAL_LUCI_VER }}-ARM-${{ env.FINAL_LUCI_VER }}-RELEASE-${{ inputs.network_settings }}
         body: |
 
           📡 ------------------------------路由器后台信息------------------------------
           
-          📌 版本： iStoreOS-ARM-${{ env.VERSION }}
+          📌 版本： ${{ env.FINAL_LUCI_VER }}-ARM-${{ env.FINAL_LUCI_VER }}
 
-          🧠 内核： Please Login to iStoreOS → System → Amlogic Service → Replace the Kernel
+          🧠 内核： Please Login to → ${{ env.FINAL_LUCI_VER }} → System → Amlogic Service → Replace the Kernel
           
           🧩 集成： 包含了基础系统组件、驱动、网络工具、容器支持、LuCI界面及插件等
           

@@ -164,7 +164,8 @@ fi
 
 
 #make image PROFILE=$PROFILE PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files"
+ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

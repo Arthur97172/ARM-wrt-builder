@@ -186,7 +186,7 @@ jobs:
       working-directory: ./imagebuilder
       env:
         ROOTFS_PARTSIZE: ${{ env.ROOTFS_PARTSIZE }}
-      run: bash ./build24.sh
+      run: bash ./build25.sh
 
     - name: 📝 生成后台描述信息文件
       run: |

@@ -47,7 +47,7 @@ env:
   # 判断：如果是 immortalwrt，且版本等于 24.10.7或者24.10.8，则强制降级为 24.10.6；否则保持用户选择
   FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && (inputs.luci_version == '24.10.7' || inputs.luci_version == '24.10.8')) && '24.10.6' || inputs.luci_version }}
   #FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version == '24.10.7') && '24.10.6' || inputs.luci_version }}
-  FINAL_WRT: ${{ inputs.luci_version }}
+  FINAL_WRT: ${{ inputs.wrt_version }}
   WRT_NAME: ${{ (inputs.wrt_version == 'openwrt') && 'OpenWrt' || 'ImmortalWrt' }}
 
 

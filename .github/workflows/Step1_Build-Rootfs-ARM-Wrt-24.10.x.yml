@@ -128,7 +128,7 @@ jobs:
           cp arm64/immortalwrt-repositories.conf imagebuilder/repositories.conf
           cat shell/immortalwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
         fi 
-        cp shell/{prepare-packages.sh,custom-packages.sh} imagebuilder/
+        cp shell/prepare-packages.sh imagebuilder/
         find files/packages/ -name "*.ipk" -exec cp {} imagebuilder/packages/ \;
         
         mkdir -p imagebuilder/files/etc/{uci-defaults,banner1}

@@ -4,12 +4,14 @@
   <img src="./files/screenshot/banner.svg" style="max-width: 100%; height: auto;" />
 </p>
 
-  <h1>基于ImmortalWrt and OpenWrt Imagebuilder Airoha-an7581</h1>
+  <h1>基于ImmortalWrt and OpenWrt支持所有的amlogic-s9xxx-openwrt列出的芯片；支持24.10.x和25.12.x版本编译，并可选择是否包含Docker。
 
-  <img src="https://img.shields.io/github/downloads/Arthur97172/Airoha-wrt-builder/total.svg?style=for-the-badge&color=32C955"/>
-  <img src="https://img.shields.io/github/stars/Arthur97172/Airoha-wrt-builder.svg?style=for-the-badge&color=orange"/>
-  <img src="https://img.shields.io/github/forks/Arthur97172/Airoha-wrt-builder.svg?style=for-the-badge&color=ff69b4"/>
-  <img src="https://img.shields.io/github/license/Arthur97172/Airoha-wrt-builder.svg?style=for-the-badge&color=blueviolet"/>
+编译快速，基本上15分钟就可以完成编译工作。</h1>
+
+  <img src="https://img.shields.io/github/downloads/Arthur97172/ARM-wrt-builder/total.svg?style=for-the-badge&color=32C955"/>
+  <img src="https://img.shields.io/github/stars/Arthur97172/ARM-wrt-builder.svg?style=for-the-badge&color=orange"/>
+  <img src="https://img.shields.io/github/forks/Arthur97172/ARM-wrt-builder.svg?style=for-the-badge&color=ff69b4"/>
+  <img src="https://img.shields.io/github/license/Arthur97172/ARM-wrt-builder.svg?style=for-the-badge&color=blueviolet"/>
 
   [![](https://img.shields.io/badge/-目录:-696969.svg)](#readme)
   [![](https://img.shields.io/badge/-项目介绍-FFFFFF.svg)](#-项目介绍-)

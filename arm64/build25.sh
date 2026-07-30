@@ -1,9 +1,8 @@
 #!/bin/bash
 # 此脚本在Imagebuilder 根目录运行
 ROOTFS_PARTSIZE=${2:-"2048"}   
-echo "Rootfs Size: $ROOTFS_PARTSIZE"
-source custom-packages.sh
-echo "第三方软件包: $CUSTOM_PACKAGES"
+echo "Target Profile: $PROFILE"
+echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
 LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
 

@@ -25,7 +25,7 @@
 ## 🤔 项目介绍 [![](https://img.shields.io/badge/-项目介绍-FFFFFF.svg)](#-项目介绍-)
 **目标是提供一个纯净的ImmortalWrt和OpenWrt系统，支持24.10.x和25.12.x版本编译，并可选择是否包含Docker。**
 
-**支持所有的amlogic-s9xxx-openwrt列出的芯片。**
+**支持所有的amlogic-s9xxx-openwrt项目于的设备型号。**
 
 ***编译快速，基本上5分钟就可以完成编译工作。***
 

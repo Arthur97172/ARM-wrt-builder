@@ -4,7 +4,7 @@
   <img src="./files/screenshot/banner.svg" style="max-width: 100%; height: auto;" />
 </p>
 
-  <h1>基于ImmortalWrt and OpenWrt支持所有的amlogic-s9xxx-openwrt列出的芯片。
+  <h1>基于ImmortalWrt and OpenWrt armv8
 
 </h1>
 

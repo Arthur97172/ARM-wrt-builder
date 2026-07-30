@@ -129,7 +129,14 @@ jobs:
           cat shell/immortalwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
         fi 
         cp shell/prepare-packages.sh imagebuilder/
-        find files/packages/ -name "*.ipk" -exec cp {} imagebuilder/packages/ \;
+        
+        # 复制本地 ipk 插件包（【关键修复点】：增加目录存在性校验，防止 find 报错）
+        if [ -d "files/packages" ]; then
+          echo "📂 检测到本地插件目录，开始复制 ipk 文件..."
+          find files/packages/ -name "*.ipk" -exec cp {} imagebuilder/packages/ \;
+        else
+          echo "⏭️ 未检测到 files/packages 目录，跳过本地 ipk 复制"
+        fi
         
         mkdir -p imagebuilder/files/etc/{uci-defaults,banner1}
         cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/

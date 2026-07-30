@@ -318,32 +318,54 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
-echo "🛠️ 正在预准备 APK 数据库路径..."
+# ============================================
+# 步骤 5.1: 动态捕获 Target Root 目录并补全 APK 运行环境 [核心修复]
+# ============================================
+echo "🛠️ 正在预准备 APK 运行环境与数据库路径..."
 
-# 1. 确保各种可能的目标根目录（包括 root-generic 和 root-armsr 等）下都建有 lib/apk/db 目录
-# 这样无论 Makefile 推导出的 rootfs 叫什么，apk 工具都能找到路径上锁
-mkdir -p build_dir/target-*/root-generic/lib/apk/db 2>/dev/null || true
-mkdir -p build_dir/target-*/root-generic/var/lib/apk 2>/dev/null || true
-mkdir -p build_dir/target-*/root-*/lib/apk/db 2>/dev/null || true
+# 1. 从 ImageBuilder Makefile 中动态计算出真实的 TARGET_DIR 路径
+# 即使 Profile 不匹配，也能精准获取实际解压的目标路径
+TARGET_ROOT_DIR=$(make -n image PROFILE="${PROFILE:-generic}" 2>/dev/null | grep -o 'build_dir/target-[^"]*/root-[^ "]*' | head -n 1)
 
-# 如果 build_dir 还没建立，预先创建通用的路径
-mkdir -p "build_dir/target-aarch64_generic_musl/root-generic/lib/apk/db"
+# 如果没抓到，使用 fallback 通配搜索
+if [ -z "$TARGET_ROOT_DIR" ]; then
+    TARGET_ROOT_DIR="build_dir/target-aarch64_generic_musl/root-armsr"
+fi
 
-# 2. 将本地公钥放进 files 目录，以便打包进最终系统
+echo "🎯 目标 Rootfs 路径确定为: $TARGET_ROOT_DIR"
+
+# 2. 强行建立 apk 运行锁和数据库依赖的所有底层目录
+mkdir -p "$TARGET_ROOT_DIR/lib/apk/db"
+mkdir -p "$TARGET_ROOT_DIR/var/lib/apk"
+mkdir -p "$TARGET_ROOT_DIR/etc/apk/keys"
+
+# 3. 扫描 build_dir 目录下所有存在的 target，一律补全 lib/apk/db (双保险)
+find build_dir/ -maxdepth 3 -type d -name "target-*" 2>/dev/null | while read -r tdir; do
+    mkdir -p "$tdir"/root-*/lib/apk/db "$tdir"/root-*/etc/apk/keys 2>/dev/null || true
+done
+
+# 4. 将本地签名公钥同步放入目标 Rootfs 的 etc/apk/keys，防止 apk add 抛出 UNTRUSTED 错误
 mkdir -p files/etc/apk/keys
 if [ -d "keys" ]; then
     cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
+    cp -vf keys/*.pem "$TARGET_ROOT_DIR/etc/apk/keys/" 2>/dev/null || true
 fi
 
 # ============================================
-# 步骤6: 执行 make image (使用指定 PROFILE=generic)
+# 步骤 6: 执行 make image
 # ============================================
-echo "🚀 开始编译镜像 (PROFILE=generic)..."
+echo "🚀 开始编译镜像..."
 
-# ============================================
-# 步骤6: 执行 make image
-# ============================================
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
+# 如果外部没传 PROFILE，armsr 默认使用 "Default" 或者不传；传了则用外部参数
+BUILD_PROFILE="${PROFILE}"
+if [ -z "$BUILD_PROFILE" ] || [ "$BUILD_PROFILE" = "generic" ]; then
+    # 在 25.12 armsr 下，Default 代表 Generic EFI Boot
+    BUILD_PROFILE="Default"
+fi
+
+echo "使用 Profile: $BUILD_PROFILE"
+
+make image PROFILE="$BUILD_PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

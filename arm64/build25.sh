@@ -1,16 +1,13 @@
 #!/bin/bash
-# Wrt 25.12.x Rockchip 构建脚本 (APK 格式)
-# 在 imagebuilder 目录下运行
+# 此脚本在Imagebuilder 根目录运行
+ROOTFS_PARTSIZE=${2:-"2048"}   
+echo "Rootfs Size: $ROOTFS_PARTSIZE"
+source custom-packages.sh
+echo "第三方软件包: $CUSTOM_PACKAGES"
+LOGFILE="/tmp/uci-defaults-log.txt"
+echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
 
-# --- 接收外部参数 ---
-# 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
-PROFILE=${1:-"friendlyarm_nanopc-t6"}
-ROOTFS_PARTSIZE=${2:-"1024"}
-INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
-
-echo "Target Profile: $PROFILE"
-echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
-echo "Include Docker: $INCLUDE_DOCKER"
+#查询是否包含第三方软件包
 
 # ============================================
 # 步骤1: 加载第三方插件配置

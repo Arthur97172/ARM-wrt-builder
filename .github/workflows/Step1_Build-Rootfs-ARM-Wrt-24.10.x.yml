@@ -42,13 +42,26 @@ on:
         description: '请输入默认网关'
         required: true
         default: '192.168.10.1'
-
+      rootfs_partsize:
+        description: '设置软件包大小 单位(MB)'
+        required: true
+        default: '2048'
+        type: choice
+        options:
+          - '256'
+          - '512'
+          - '1024'
+          - '2048'
+          - '3072'
+          - '4096' 
+          
 env:
   # 判断：如果是 immortalwrt，且版本等于 24.10.7或者24.10.8，则强制降级为 24.10.6；否则保持用户选择
   FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && (inputs.luci_version == '24.10.7' || inputs.luci_version == '24.10.8')) && '24.10.6' || inputs.luci_version }}
   #FINAL_LUCI_VER: ${{ (inputs.wrt_version == 'immortalwrt' && inputs.luci_version == '24.10.7') && '24.10.6' || inputs.luci_version }}
   FINAL_WRT: ${{ inputs.wrt_version }}
   WRT_NAME: ${{ (inputs.wrt_version == 'openwrt') && 'OpenWrt' || 'ImmortalWrt' }}
+  ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
 
 
 jobs:
@@ -188,6 +201,8 @@ jobs:
 
     - name: 🧱 构建 ${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-rootfs 文件
       working-directory: ./imagebuilder
+      env:
+        ROOTFS_PARTSIZE: ${{ env.ROOTFS_PARTSIZE }}
       run: bash ./build24.sh
 
     - name: 🚀 上传到 Release

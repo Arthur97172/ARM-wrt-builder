@@ -59,7 +59,7 @@ env:
   FINAL_WRT: ${{ inputs.wrt_version }}
   WRT_NAME: ${{ (inputs.wrt_version == 'openwrt') && 'OpenWrt' || 'ImmortalWrt' }}
   ROOTFS_PARTSIZE: ${{ inputs.rootfs_partsize }}
-
+  DOCKER: ${{ inputs.include_docker }}
 
 jobs:
   build:

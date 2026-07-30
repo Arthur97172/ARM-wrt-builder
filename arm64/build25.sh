@@ -1,20 +1,21 @@
 #!/bin/bash
-# 此脚本在 Imagebuilder 根目录运行
-ROOTFS_PARTSIZE=${2:-"2048"}    
+# Wrt 25.12.x  构建脚本 (APK 格式)
+# 在 imagebuilder 目录下运行
+
+# --- 接收外部参数 ---
+# 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
+ROOTFS_PARTSIZE=${2:-"2048"}
+INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
+
 echo "Target Profile: $PROFILE"
 echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
-LOGFILE="/tmp/uci-defaults-log.txt"
-echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
+echo "Include Docker: $INCLUDE_DOCKER"
 
 # ============================================
 # 步骤1: 加载第三方插件配置
 # ============================================
 CUSTOM_PACKAGES=""
-if [ -f "apk-custom-packages.sh" ]; then
-    source apk-custom-packages.sh
-elif [ -f "custom-packages.sh" ]; then
-    source custom-packages.sh
-fi
+source apk-custom-packages.sh
 
 HAS_CUSTOM_PACKAGES="no"
 if [ -n "$CUSTOM_PACKAGES" ]; then
@@ -73,12 +74,13 @@ if [ "$INCLUDE_DOCKER" = "yes" ]; then
 fi
 
 # ============================================
-# 步骤2: 处理第三方插件
+# 步骤2: 处理第三方插件(最佳努力,失败不阻断构建)
 # ============================================
 THIRD_PARTY_OK=0
 if [ "$HAS_CUSTOM_PACKAGES" = "yes" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - 开始处理第三方APK..."
 
+    # 克隆 OpenWrt-App 仓库 (best-effort)
     echo "克隆 OpenWrt-App 仓库..."
     rm -rf /tmp/store-repo
     if git clone --depth=1 https://github.com/Arthur97172/OpenWrt-App.git /tmp/store-repo 2>/tmp/git-clone.log; then
@@ -90,13 +92,21 @@ if [ "$HAS_CUSTOM_PACKAGES" = "yes" ]; then
 fi
 
 if [ "$THIRD_PARTY_OK" = "1" ]; then
-    mkdir -p thirdparty apk-merged
+    # 创建临时目录存放第三方 APK
+    mkdir -p thirdparty
 
+    # 复制第三方 APK 到临时目录(不覆盖 base 包)
+    # rockchip/armv8 兼容 aarch64_generic 和 aarch64_cortex-a53;优先 aarch64_generic
     echo "复制第三方 APK 到 thirdparty/ 目录..."
+    mkdir -p apk-merged thirdparty
     if [ -d /tmp/store-repo/apk/aarch64_generic ]; then
         find /tmp/store-repo/apk/aarch64_generic -name '*.apk' -exec cp -t apk-merged {} + 2>/dev/null || true
     fi
 
+   # if [ -d /tmp/store-repo/apk/aarch64_cortex-a53 ]; then
+   #     find /tmp/store-repo/apk/aarch64_cortex-a53 -name '*.apk' -exec cp -t apk-merged {} + 2>/dev/null || true
+   # fi
+    
     if [ -d apk-merged ] && [ -n "$(ls apk-merged/*.apk 2>/dev/null)" ]; then
         cp apk-merged/*.apk thirdparty/ 2>/dev/null
     else
@@ -113,10 +123,15 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
 fi
 
 if [ "$THIRD_PARTY_OK" = "1" ]; then
+    # 把第三方 APK 物理放入 ImageBuilder 的 packages/ 目录,并显式重建
+    # SIGNED packages.adb 索引。IB 默认的 `apk mkndx` 在出错时静默吞 stderr,
+    # 后面 make image 会找不到包。
     echo "复制第三方 APK 到 imagebuilder/packages/ ..."
     mkdir -p packages
 
+    # 排除已知不可用的 APK(glob),空就是不过滤
     SKIP_APKS=""
+
     APK_BIN="staging_dir/host/bin/apk"
     APK_KEYS_DIR="keys"
     APK_SIGN_KEY="$APK_KEYS_DIR/local-private-key.pem"
@@ -124,6 +139,10 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         APK_SIGN_KEY="$APK_KEYS_DIR/build_key.apk.sec"
     fi
 
+    # 把 apk 重命名为 canonical 名称 "{name}-{version}.apk"。apk-tools 在
+    # add 时按 canonical 名查包,文件名 (比如带 -x86_64 后缀) 与 adb 里
+    # 登记的 (name-version) 不一致,会抛 "package mentioned in index not
+    # found"。这里用 `apk adbdump` 读 metadata 里的 name+version 后重命名。
     echo "🔖 重命名 apk 为 canonical 名称(name-version.apk)..."
     canoned=0
     cached=0
@@ -136,7 +155,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
             case "$base" in $s) skip=1 ;; esac
         done
         if [ "$skip" = "1" ]; then
-            echo "    ↷ 跳过: $base"
+            echo "  ↷ 跳过: $base"
             continue
         fi
         canon_name=$("$APK_BIN" adbdump "$f" 2>/dev/null \
@@ -144,7 +163,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         canon_pkg=$(echo "$canon_name" | head -1)
         canon_ver=$(echo "$canon_name" | sed -n '2p')
         if [ -z "$canon_pkg" ] || [ -z "$canon_ver" ]; then
-            echo "    ⚠️ 无法读 metadata(可能是损坏的 apk):$base — 跳过"
+            echo "  ⚠️ 无法读 metadata(可能是损坏的 apk):$base — 跳过"
             continue
         fi
         target="$canon_pkg-$canon_ver.apk"
@@ -159,6 +178,9 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
     PKG_IN_POOL=$(ls packages/*.apk 2>/dev/null | wc -l)
     echo "✅ 第三方 APK 已合并到 packages/ (池中现共 $PKG_IN_POOL 个文件)"
 
+    # 在 mkndx 之前先准备好 EC 签名 key。IB Makefile 的 _check_keys 目标
+    # 是在 mkndx 之后才生成 keys,而我们的 mkndx 在这之前运行,所以
+    # 生成的 packages.adb 是未签名的,后面 apk add 会判 UNTRUSTED。
     OPENSSL_BIN="staging_dir/host/bin/openssl"
     NE_KEY="$APK_KEYS_DIR/local-private-key.pem"
     NEED_KEY_GEN=0
@@ -171,6 +193,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         if ! "$OPENSSL_BIN" ecparam -name prime256v1 -genkey -noout -out "$NE_KEY" 2>/dev/null; then
             echo "⚠️ ecparam 生成私钥失败,继续依赖 IB 的 _check_keys"
         else
+            # IB sed: '1s/^/untrusted comment: Local build key\n/'
             sed -i '1s/^/untrusted comment: Local build key\n/' "$NE_KEY" 2>/dev/null
             if "$OPENSSL_BIN" ec -in "$NE_KEY" -pubout > "$APK_KEYS_DIR/local-public-key.pem" 2>/dev/null; then
                 sed -i '1s/^/untrusted comment: Local build key\n/' "$APK_KEYS_DIR/local-public-key.pem" 2>/dev/null
@@ -182,6 +205,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
         fi
     fi
 
+    # 在 IB 子目录内运行 ../staging_dir/host/bin/apk mkndx。
     run_mkndx() {
         local args=("$@")
         local cmd=(../"$APK_BIN" mkndx)
@@ -194,6 +218,8 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
     }
 
     if [ -x "$APK_BIN" ]; then
+        # IB 25.12.x 默认 CONFIG_SIGNATURE_CHECK=y,所有 packages.adb 必
+        # 须用 local-private-key.pem 签名,否则 apk 读到时 UNTRUSTED。
         APK_FILES=()
         for f in packages/*.apk; do
             [ -e "$f" ] || continue
@@ -210,7 +236,7 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
             BAD=()
             for entry in "${APK_FILES[@]}"; do
                 if ! (cd packages && run_mkndx "$entry"); then
-                    echo "    ✗ 损坏: packages/$entry"
+                    echo "  ✗ 损坏: packages/$entry"
                     BAD+=("$entry")
                 fi
             done
@@ -228,11 +254,15 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
                 if [ "${#APK_FILES[@]}" -eq 0 ]; then
                     echo "⚠️ 没有健康的 apk 留下来,跳过重建"
                 elif (cd packages && run_mkndx "${APK_FILES[@]}"); then
-                    echo "✅ 已用剩余的健康 apk 重建 SIGNED 索引"
+                    echo "✅ 已用剩余的健康 apk 重建 SIGNED 索引(损坏 apk 的功能将不可用)"
+                else
+                    echo "⚠️ 即便移出损坏 apk 后仍无法生成索引,继续依赖 IB 自动重建"
                 fi
             fi
         fi
 
+        # 把 packages.adb 的 mtime 设到所有 *.apk 之后,避免 IB 因
+        # mkndx 旧而重建产生未签名索引。
         if [ -f packages/packages.adb ]; then
             touch -d "@$(($(date +%s) + 60))" packages/packages.adb 2>/dev/null || \
                 touch packages/packages.adb
@@ -252,7 +282,7 @@ echo "$(date '+%Y-%m-%d %H:%M:%S') - 编译包列表:"
 echo "$PACKAGES"
 
 # ============================================
-# 步骤4: 特殊处理 (openclash 等)
+# 步骤4: 特殊处理 (openclash 等需要额外文件)
 # ============================================
 if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
     echo "✅ 已选择 luci-app-openclash,添加 openclash core"
@@ -268,6 +298,17 @@ fi
 
 # ============================================
 # 步骤5: 关闭 apk 签名校验
+#
+# IB 25.12 .config 默认 CONFIG_SIGNATURE_CHECK=y。我们的第三方 apk 由
+# 不同作者发布,IB 的 apk add 读 packages.adb 时会 UNTRUSTED 整库丢弃。
+#
+# `make image CONFIG_SIGNATURE_CHECK=` 在 GHA 下不能让 apk add 真的
+# 接收 --allow-untrusted,因为 IB Makefile 在 child make 之前
+# `unset MAKEFLAGS`,把 cmdline override 抹掉;child make 重新读 .config,
+# $(if $(CONFIG_SIGNATURE_CHECK),,--allow-untrusted) 退化成 strict-mode。
+#
+# 改方案: 直接 sed 改 .config 把 CONFIG_SIGNATURE_CHECK 设为空,
+# parent 和 child 都读到空,apk add 拿到 --allow-untrusted。
 # ============================================
 if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
     cp .config .config.bak.imm
@@ -277,45 +318,9 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
-# 步骤 5.1: 修正 APK 数据库与公钥预存路径 [关键修复!]
-# ============================================
-echo "🛠️ 正在预创建 ImageBuilder 构建工作目录中的 APK 数据库文件夹..."
-
-# 1. 查找或预置所有的 Target Rootfs 构建路径
-# ImageBuilder 在运行 make image 时会将临时 Target 安装目录置于 build_dir/target-* 下
-TARGET_BUILD_DIRS=$(find build_dir/ -maxdepth 2 -type d -name "root-*" 2>/dev/null)
-
-if [ -z "$TARGET_BUILD_DIRS" ]; then
-    # 如果还没有 build_dir，预先按照当前架构创建常规的 root-armsr 路径
-    mkdir -p "build_dir/target-aarch64_generic_musl/root-armsr/lib/apk/db"
-    mkdir -p "build_dir/target-aarch64_generic_musl/root-armsr/var/lib/apk"
-    mkdir -p "build_dir/target-aarch64_generic_musl/root-armsr/etc/apk/keys"
-else
-    for bdir in $TARGET_BUILD_DIRS; do
-        mkdir -p "$bdir/lib/apk/db"
-        mkdir -p "$bdir/var/lib/apk"
-        mkdir -p "$bdir/etc/apk/keys"
-    done
-fi
-
-# 2. 正确地将本地签名公钥注入给系统 rootfs (通过 files 目录)
-mkdir -p files/etc/apk/keys
-if [ -d "keys" ]; then
-    cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
-fi
-
-# 3. 如果在 repositories.conf 同级目录下没有 keys 目录，软链接补全
-mkdir -p etc/apk/keys
-if [ -d "keys" ]; then
-    cp -vf keys/*.pem etc/apk/keys/ 2>/dev/null || true
-fi
-
-# ============================================
 # 步骤6: 执行 make image
 # ============================================
-#make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
-ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}
-make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
+make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

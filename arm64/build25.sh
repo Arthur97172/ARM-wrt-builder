@@ -318,35 +318,41 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
-# ============================================
-# 步骤 5.1: 自动获取合法 PROFILE & 预创建 APK 目录
+# 步骤 5.1: 自动获取 PROFILE & 初始化 APK rootfs 目录
 # ============================================
 echo "🛠️ 正在预准备 Profile 与 APK 运行环境..."
 
-# 1. 如果外部没传 PROFILE，自动读取 ImageBuilder 支持的第一个合法 Profile
+# 1. 自动探测 Profile
 if [ -z "$PROFILE" ]; then
-    # 从 make info 中抓取第一行的 Profile 标识名称
     DETECTED_PROFILE=$(make info 2>/dev/null | grep -E '^[a-zA-Z0-9_-]+:' | head -n 1 | cut -d':' -f1)
-    
     if [ -n "$DETECTED_PROFILE" ]; then
         PROFILE="$DETECTED_PROFILE"
         echo "💡 自动探测到当前 Target 的默认 Profile: $PROFILE"
-    else
-        echo "⚠️ 未探测到 Profile，尝试留空执行..."
     fi
-else
-    echo "💡 使用外部指定的 Profile: $PROFILE"
 fi
 
-# 2. 预创建通用及当前 Profile 的 rootfs 结构，彻底解决 lock database 问题
+# 2. 深度修复：预先建立该 Profile 对应的 rootfs 目录结构
+# OpenWrt 25.x 下 APK 安装依赖这些底层目录
+TARGET_ROOTFS="build_dir/target-aarch64_generic_musl/root-${PROFILE}"
+if [ -z "$PROFILE" ]; then
+    TARGET_ROOTFS="build_dir/target-aarch64_generic_musl/root-default"
+fi
+
+echo "📁 预创建 target rootfs 目录: $TARGET_ROOTFS"
+mkdir -p "${TARGET_ROOTFS}/lib/apk/db"
+mkdir -p "${TARGET_ROOTFS}/var/lib/apk"
+mkdir -p "${TARGET_ROOTFS}/etc/apk/keys"
+mkdir -p "${TARGET_ROOTFS}/tmp"
+
+# 同时也通配创建所有可能匹配的 build_dir 路径，确保万无一失
 mkdir -p build_dir/target-*/root-*/lib/apk/db 2>/dev/null || true
-mkdir -p build_dir/target-*/root-*/var/lib/apk 2>/dev/null || true
 mkdir -p build_dir/target-*/root-*/etc/apk/keys 2>/dev/null || true
 
-# 3. 同步秘钥文件
-mkdir -p files/etc/apk/keys
+# 3. 复制 key 秘钥到生成的 target rootfs 目录
 if [ -d "keys" ]; then
+    mkdir -p files/etc/apk/keys
     cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
+    cp -vf keys/*.pem "${TARGET_ROOTFS}/etc/apk/keys/" 2>/dev/null || true
 fi
 
 # ============================================

@@ -1,8 +1,8 @@
 #!/bin/bash
-# Wrt 25.12.x armv8 构建脚本 (APK 格式 + Makefile 补丁)
+# Wrt 25.12.x armv8 构建脚本 (APK 架构稳定修复版)
 # 在 imagebuilder 目录下运行
 
-set -e
+set -e # 遇到错误即刻停止
 
 # --- 接收外部参数 ---
 ROOTFS_PARTSIZE=${2:-"2048"}
@@ -11,25 +11,6 @@ INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 echo "Target Profile: ${PROFILE:-generic}"
 echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
 echo "Include Docker: $INCLUDE_DOCKER"
-
-# ============================================
-# 步骤 0: 核心修复 — 补丁 ImageBuilder 的 Makefile
-# (解决 Unable to lock database 及 签名/索引异常)
-# ============================================
-echo "🔧 正在应用 Makefile (package_reload initdb) 补丁..."
-
-if [ -f Makefile ]; then
-    # 1. 自动在 package_install 或 package_reload 目标中补全 --initdb 逻辑
-    if grep -q "package_reload:" Makefile; then
-        # 确保在 apk add 动作前先 initdb
-        sed -i '/package_reload:/a \tdmkdir -p $(TARGET_DIR)/lib/apk/db && $(APK) add --initdb || true' Makefile
-    fi
-
-    # 2. 移除 Makefile 内部的硬编码签名限制，防止 UNTRUSTED signature 报错
-    sed -i 's/--keys-dir/--allow-untrusted --keys-dir/g' Makefile 2>/dev/null || true
-    sed -i 's/\$(APK) add/\$(APK) add --allow-untrusted/g' Makefile 2>/dev/null || true
-    echo "✅ Makefile 补丁注入成功！"
-fi
 
 # ============================================
 # 步骤1: 加载第三方插件配置
@@ -96,7 +77,7 @@ if [ "$INCLUDE_DOCKER" = "yes" ]; then
 fi
 
 # ============================================
-# 步骤2: 处理第三方插件
+# 步骤2: 处理第三方插件与生成 APK 索引
 # ============================================
 THIRD_PARTY_OK=0
 if [ "$HAS_CUSTOM_PACKAGES" = "yes" ]; then
@@ -111,7 +92,7 @@ if [ "$HAS_CUSTOM_PACKAGES" = "yes" ]; then
 fi
 
 if [ "$THIRD_PARTY_OK" = "1" ]; then
-    mkdir -p apk-merged packages
+    mkdir -p packages
 
     if [ -d /tmp/store-repo/apk/aarch64_generic ]; then
         find /tmp/store-repo/apk/aarch64_generic -name '*.apk' -exec cp -t packages/ {} + 2>/dev/null || true
@@ -119,6 +100,22 @@ if [ "$THIRD_PARTY_OK" = "1" ]; then
 
     PKG_COUNT=$(find packages -name '*.apk' 2>/dev/null | wc -l)
     echo "✅ packages/ 目录下现共有 $PKG_COUNT 个第三方 APK 文件"
+
+    # 如果存在本地包，生成本地 APK 索引文件并写入 repositories 配置文件
+    if [ $PKG_COUNT -gt 0 ]; then
+        echo "📦 正在生成本地 packages.adb 索引..."
+        if command -v apk >/dev/null 2>&1; then
+            apk mkndx --output packages/packages.adb packages/*.apk 2>/dev/null || true
+        elif [ -f "./staging_dir/host/bin/apk" ]; then
+            ./staging_dir/host/bin/apk mkndx --output packages/packages.adb packages/*.apk 2>/dev/null || true
+        fi
+
+        LOCAL_REPO_PATH="$(pwd)/packages/packages.adb"
+        if [ -f repositories ]; then
+            echo "$LOCAL_REPO_PATH" >> repositories
+            echo "✅ 已向 repositories 追加本地源路径: $LOCAL_REPO_PATH"
+        fi
+    fi
 fi
 
 # ============================================
@@ -143,7 +140,15 @@ if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
 fi
 
 # ============================================
-# 步骤5: 执行 make image
+# 步骤5: 安全修改 Makefile (防止损坏语法，只做轻量参数替换)
+# ============================================
+if [ -f Makefile ]; then
+    # 替换其中的默认签名检查开关，加上未信任签名放行参数
+    sed -i 's/--keys-dir/--allow-untrusted --keys-dir/g' Makefile 2>/dev/null || true
+fi
+
+# ============================================
+# 步骤6: 执行 make image
 # ============================================
 ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}
 PROFILE_NAME=${PROFILE:-"generic"}
@@ -152,6 +157,7 @@ make image PROFILE="$PROFILE_NAME" \
            PACKAGES="$PACKAGES" \
            FILES="files" \
            ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE" \
+           OPTION_ALLOW_UNTRUSTED=1 \
            APK_ARGS="--allow-untrusted"
 
 if [ $? -ne 0 ]; then

@@ -4,7 +4,7 @@
   <img src="./files/screenshot/banner.svg" style="max-width: 100%; height: auto;" />
 </p>
 
-  <h1>基于ImmortalWrt and OpenWrt支持所有的amlogic-s9xxx-openwrt列出的芯片；支持24.10.x和25.12.x版本编译，并可选择是否包含Docker。
+  <h1>基于ImmortalWrt and OpenWrt支持所有的amlogic-s9xxx-openwrt列出的芯片。
 
 编译快速，基本上15分钟就可以完成编译工作。</h1>
 
@@ -23,7 +23,7 @@
   </div>
   
 ## 🤔 项目介绍 [![](https://img.shields.io/badge/-项目介绍-FFFFFF.svg)](#-项目介绍-)
-**目标是提供一个纯净的ImmortalWrt系统，支持24.10.x和25.12.x版本编译，并可选择是否包含Docker。**
+**目标是提供一个纯净的ImmortalWrt和OpenWrt系统，支持24.10.x和25.12.x版本编译，并可选择是否包含Docker。**
 
 ***编译快速，基本上5分钟就可以完成编译工作。***
 

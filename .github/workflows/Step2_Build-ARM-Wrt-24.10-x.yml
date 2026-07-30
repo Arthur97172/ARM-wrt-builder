@@ -296,14 +296,14 @@ env:
   FINAL_WRT: ${{ inputs.wrt_version }}
   WRT_NAME: ${{ (inputs.wrt_version == 'openwrt') && 'OpenWrt' || 'ImmortalWrt' }}
   DOCKER: ${{ inputs.include_docker }}
-
-permissions:
-  contents: write
-  actions: write
   
 jobs:
   build:
     runs-on: ubuntu-24.04
+    
+    permissions:
+      contents: write
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

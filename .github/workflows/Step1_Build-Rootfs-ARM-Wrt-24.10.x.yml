@@ -122,10 +122,10 @@ jobs:
         # ⚠️ 确保这里复制了 repositories.conf
         cp arm64/{build24.sh,Makefile} imagebuilder/
         if [ "${{ env.FINAL_WRT }}" = "openwrt" ]; then
-          cp rockchip/openwrt-repositories.conf imagebuilder/repositories.conf
+          cp arm64/openwrt-repositories.conf imagebuilder/repositories.conf
           cat shell/openwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
         else
-          cp rockchip/immortalwrt-repositories.conf imagebuilder/repositories.conf
+          cp arm64/immortalwrt-repositories.conf imagebuilder/repositories.conf
           cat shell/immortalwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
         fi 
         cp shell/{prepare-packages.sh,custom-packages.sh} imagebuilder/

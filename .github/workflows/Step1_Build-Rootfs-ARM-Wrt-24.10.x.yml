@@ -75,6 +75,11 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: 🛠️ 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zstd curl unzip tree qemu-utils genisoimage
+
     - name: ⚙️ 设置可执行权限
       run: | 
         chmod +x arm64/build24.sh

@@ -312,8 +312,14 @@ jobs:
         run: |
           echo "📦 正在下载预构建 rootfs"
           mkdir -p bin/targets/armsr/armv8
+          
+          # 1. 下载 rootfs 包
           curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
             https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/Rootfs-${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-armsr-armv8-generic-rootfs.tar.gz
+
+          # 2. 下载 Step1 预留的 info.txt 文件
+          curl -L -o info.txt \
+            https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/Rootfs-${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/info.txt || true
 
       - name: 🔍 查找${{ env.FINAL_WRT }}-rootfs.tar.gz所在路径
         id: find_rootfs
@@ -357,10 +363,25 @@ jobs:
         run: |
           echo "date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
+      - name: 📖 读取后台描述文件
+        id: read_info
+        run: |
+          if [ -f "info.txt" ]; then
+            echo "✅ 成功找到 info.txt，开始读取..."
+            # 使用多行变量语法写入 GITHUB_ENV
+            echo "ROUTER_INFO<<EOF" >> $GITHUB_ENV
+            cat info.txt >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+          else
+            echo "⚠️ 未找到 info.txt，将使用默认描述信息"
+            echo "ROUTER_INFO=📌 版本：${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}" >> $GITHUB_ENV
+          fi
+
       - name: 🚀 上传到 Release
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: ${{ steps.date.outputs.date }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}-Docker-${{ env.DOCKER }}
+          body: ${{ env.ROUTER_INFO }}
           files: |
             ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz
         env:

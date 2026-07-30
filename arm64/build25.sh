@@ -315,6 +315,24 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
+echo "🛠️ 正在预准备 APK 环境与密钥系统..."
+
+# 1. 强制在 overlay / files 中创建 apk 必备的底层数据库与 Key 存放路径
+mkdir -p files/var/lib/apk
+mkdir -p files/usr/lib/apk
+mkdir -p files/etc/apk/keys
+
+# 2. 同步生成的 local-public-key 到打包 rootfs 中，防止 apk add 抛出 UNTRUSTED 错误
+if [ -d "keys" ]; then
+    cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
+fi
+
+# 3. 预置索引数据库
+if [ -f "packages/packages.adb" ]; then
+    cp -vf packages/packages.adb files/var/lib/apk/ 2>/dev/null || true
+fi
+
+# ============================================
 # 步骤6: 执行 make image
 # ============================================
 #make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"

@@ -115,7 +115,7 @@ jobs:
         # 解压
         tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
         # 这里的解压目录匹配官方默认生成的文件夹名
-        mv istoreos-imagebuilder-* imagebuilder
+        mv ${{ env.FINAL_WRT }}-imagebuilder-* imagebuilder
 
     - name: 🔄 复制并设置必备文件
       run: |

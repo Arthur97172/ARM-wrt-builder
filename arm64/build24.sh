@@ -1,26 +1,9 @@
 #!/bin/bash
-# Log file for debugging
-
-# --- 接收外部参数 ---
-# $1, $2 是执行脚本时后面跟着的参数
-PROFILE=${1:-"friendlyarm_nanopc-t6"}      # 如果没传，默认 r3s
-ROOTFS_PARTSIZE=${2:-"1024"}                 # 如果没传，默认 1024
-INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}       # 通过 env 传入
-
-# 验证收到的参数
-echo "Target Profile: $PROFILE"
-echo "Rootfs Size: $ROOTFS_PARTSIZE"
-echo "Include Docker: $INCLUDE_DOCKER"
-
+# 此脚本在Imagebuilder 根目录运行
 source custom-packages.sh
 echo "第三方软件包: $CUSTOM_PACKAGES"
 LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >> $LOGFILE
-
-# yml 传入的路由器型号 PROFILE
-echo "Building for profile: $PROFILE"
-# yml 传入的固件大小 ROOTFS_PARTSIZE
-echo "Building for ROOTFS_PARTSIZE: $ROOTFS_PARTSIZE"
 
 #查询是否包含第三方软件包
 if [ -z "$CUSTOM_PACKAGES" ]; then
@@ -181,7 +164,7 @@ fi
 
 
 #make image PROFILE=$PROFILE PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
-make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" CONFIG_TARGET_ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

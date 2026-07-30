@@ -7,7 +7,6 @@
 ROOTFS_PARTSIZE=${2:-"2048"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 
-echo "Target Profile: $PROFILE"
 echo "Rootfs Size: $ROOTFS_PARTSIZE MB"
 echo "Include Docker: $INCLUDE_DOCKER"
 
@@ -321,7 +320,8 @@ fi
 # ============================================
 # 步骤6: 执行 make image
 # ============================================
-make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
+#make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

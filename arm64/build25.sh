@@ -1,9 +1,8 @@
 #!/bin/bash
-# Wrt 25.12.x  构建脚本 (APK 格式)
+# Wrt 25.12.x armv8 构建脚本 (APK 格式)
 # 在 imagebuilder 目录下运行
 
 # --- 接收外部参数 ---
-# 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
 ROOTFS_PARTSIZE=${2:-"2048"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 
@@ -318,60 +317,9 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
-# 步骤 5.1: 自动获取 PROFILE & 初始化 APK rootfs 目录
+# 步骤6: 执行 make image
 # ============================================
-echo "🛠️ 正在预准备 Profile 与 APK 运行环境..."
-
-# 1. 自动探测 Profile
-if [ -z "$PROFILE" ]; then
-    DETECTED_PROFILE=$(make info 2>/dev/null | grep -E '^[a-zA-Z0-9_-]+:' | head -n 1 | cut -d':' -f1)
-    if [ -n "$DETECTED_PROFILE" ]; then
-        PROFILE="$DETECTED_PROFILE"
-        echo "💡 自动探测到当前 Target 的默认 Profile: $PROFILE"
-    fi
-fi
-
-# 2. 深度修复：预先建立该 Profile 对应的 rootfs 目录结构
-# OpenWrt 25.x 下 APK 安装依赖这些底层目录
-TARGET_ROOTFS="build_dir/target-aarch64_generic_musl/root-${PROFILE}"
-if [ -z "$PROFILE" ]; then
-    TARGET_ROOTFS="build_dir/target-aarch64_generic_musl/root-default"
-fi
-
-echo "📁 预创建 target rootfs 目录: $TARGET_ROOTFS"
-mkdir -p "${TARGET_ROOTFS}/lib/apk/db"
-mkdir -p "${TARGET_ROOTFS}/var/lib/apk"
-mkdir -p "${TARGET_ROOTFS}/etc/apk/keys"
-mkdir -p "${TARGET_ROOTFS}/tmp"
-
-# 同时也通配创建所有可能匹配的 build_dir 路径，确保万无一失
-mkdir -p build_dir/target-*/root-*/lib/apk/db 2>/dev/null || true
-mkdir -p build_dir/target-*/root-*/etc/apk/keys 2>/dev/null || true
-
-# 3. 复制 key 秘钥到生成的 target rootfs 目录
-if [ -d "keys" ]; then
-    mkdir -p files/etc/apk/keys
-    cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
-    cp -vf keys/*.pem "${TARGET_ROOTFS}/etc/apk/keys/" 2>/dev/null || true
-fi
-
-# ============================================
-# 步骤 6: 执行 make image
-# ============================================
-echo "🚀 开始编译镜像..."
-echo "最终使用 Profile: '$PROFILE'"
-
-# 构建 make 命令参数数组
-MAKE_ARGS=("image")
-if [ -n "$PROFILE" ]; then
-    MAKE_ARGS+=("PROFILE=$PROFILE")
-fi
-MAKE_ARGS+=("PACKAGES=$PACKAGES")
-MAKE_ARGS+=("FILES=files")
-MAKE_ARGS+=("ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE")
-
-# 执行编译
-make "${MAKE_ARGS[@]}"
+make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

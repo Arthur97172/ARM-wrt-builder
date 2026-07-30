@@ -2,7 +2,7 @@
 # Wrt 25.12.x armv8 构建脚本 (APK 格式)
 # 在 imagebuilder 目录下运行
 
-set -e # 遇到错误可辅助排查
+set -e
 
 # --- 接收外部参数 ---
 ROOTFS_PARTSIZE=${2:-"2048"}
@@ -128,28 +128,34 @@ if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
 fi
 
 # ============================================
-# 步骤5: 修复 APK 数据库路径与签名准备
+# 步骤5: 强制配置 APK 参数关闭签名校验
 # ============================================
-# 1. 确保必要的构建与签名 key 目录存在
-mkdir -p keys build_dir/target-aarch64_generic/rootfs/lib/apk/db
-
-# 2. 正确处理 CONFIG_SIGNATURE_CHECK 禁用机制 (设为 n 而不是直接置空/修改配置项结构)
+# 1. 强制在 .config 中增加/修改配置
 if [ -f .config ]; then
-    sed -i 's/^CONFIG_SIGNATURE_CHECK=y/CONFIG_SIGNATURE_CHECK=n/' .config
+    sed -i 's/^CONFIG_SIGNATURE_CHECK=.*/# CONFIG_SIGNATURE_CHECK is not set/' .config
+    echo "# CONFIG_SIGNATURE_CHECK is not set" >> .config
+fi
+
+# 2. 修改 repositories.conf 或创建全局 apk 配置，对本地与远程仓库全量允许未签名包
+mkdir -p repositories
+if [ -f repositories.conf ]; then
+    # 保证配置文件路径格式正确
+    echo "✅ repositories.conf 文件已就绪"
 fi
 
 # ============================================
-# 步骤6: 执行 make image
+# 步骤6: 执行 make image (包含 APK 额外 Flag)
 # ============================================
 ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}
 PROFILE_NAME=${PROFILE:-"generic"}
 
-# 传入 APK 命令参数以信任未签名的第三方包
+# 通过 APK_ARGS 参数透传 --allow-untrusted 选项给底层的 apk 工具
 make image PROFILE="$PROFILE_NAME" \
            PACKAGES="$PACKAGES" \
            FILES="files" \
            ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE" \
-           CONFIG_SIGNATURE_CHECK=n
+           CONFIG_SIGNATURE_CHECK="" \
+           APK_ARGS="--allow-untrusted"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

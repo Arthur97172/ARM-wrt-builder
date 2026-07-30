@@ -120,7 +120,7 @@ jobs:
         echo "✅ 配置修改完成，输出预览："
         cat "$CONFIG_PATH"
 
-    - name: ⏬ 下载 ImageBuilder 25.12.x
+    - name: ⏬ 下载 ImageBuilder-${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}文件
      # 必须在这里添加这个 env 块
       run: |
         URL="https://downloads.${{ env.FINAL_WRT }}.org/releases/${{ env.FINAL_LUCI_VER }}/targets/armsr/armv8/${{ env.FINAL_WRT }}-imagebuilder-${{ env.FINAL_LUCI_VER }}-armsr-armv8.Linux-x86_64.tar.zst"

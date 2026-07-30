@@ -319,53 +319,53 @@ fi
 
 # ============================================
 # ============================================
-# 步骤 5.1: 动态捕获 Target Root 目录并补全 APK 运行环境 [核心修复]
+# 步骤 5.1: 自动获取合法 PROFILE & 预创建 APK 目录
 # ============================================
-echo "🛠️ 正在预准备 APK 运行环境与数据库路径..."
+echo "🛠️ 正在预准备 Profile 与 APK 运行环境..."
 
-# 1. 从 ImageBuilder Makefile 中动态计算出真实的 TARGET_DIR 路径
-# 即使 Profile 不匹配，也能精准获取实际解压的目标路径
-TARGET_ROOT_DIR=$(make -n image PROFILE="${PROFILE:-generic}" 2>/dev/null | grep -o 'build_dir/target-[^"]*/root-[^ "]*' | head -n 1)
-
-# 如果没抓到，使用 fallback 通配搜索
-if [ -z "$TARGET_ROOT_DIR" ]; then
-    TARGET_ROOT_DIR="build_dir/target-aarch64_generic_musl/root-armsr"
+# 1. 如果外部没传 PROFILE，自动读取 ImageBuilder 支持的第一个合法 Profile
+if [ -z "$PROFILE" ]; then
+    # 从 make info 中抓取第一行的 Profile 标识名称
+    DETECTED_PROFILE=$(make info 2>/dev/null | grep -E '^[a-zA-Z0-9_-]+:' | head -n 1 | cut -d':' -f1)
+    
+    if [ -n "$DETECTED_PROFILE" ]; then
+        PROFILE="$DETECTED_PROFILE"
+        echo "💡 自动探测到当前 Target 的默认 Profile: $PROFILE"
+    else
+        echo "⚠️ 未探测到 Profile，尝试留空执行..."
+    fi
+else
+    echo "💡 使用外部指定的 Profile: $PROFILE"
 fi
 
-echo "🎯 目标 Rootfs 路径确定为: $TARGET_ROOT_DIR"
+# 2. 预创建通用及当前 Profile 的 rootfs 结构，彻底解决 lock database 问题
+mkdir -p build_dir/target-*/root-*/lib/apk/db 2>/dev/null || true
+mkdir -p build_dir/target-*/root-*/var/lib/apk 2>/dev/null || true
+mkdir -p build_dir/target-*/root-*/etc/apk/keys 2>/dev/null || true
 
-# 2. 强行建立 apk 运行锁和数据库依赖的所有底层目录
-mkdir -p "$TARGET_ROOT_DIR/lib/apk/db"
-mkdir -p "$TARGET_ROOT_DIR/var/lib/apk"
-mkdir -p "$TARGET_ROOT_DIR/etc/apk/keys"
-
-# 3. 扫描 build_dir 目录下所有存在的 target，一律补全 lib/apk/db (双保险)
-find build_dir/ -maxdepth 3 -type d -name "target-*" 2>/dev/null | while read -r tdir; do
-    mkdir -p "$tdir"/root-*/lib/apk/db "$tdir"/root-*/etc/apk/keys 2>/dev/null || true
-done
-
-# 4. 将本地签名公钥同步放入目标 Rootfs 的 etc/apk/keys，防止 apk add 抛出 UNTRUSTED 错误
+# 3. 同步秘钥文件
 mkdir -p files/etc/apk/keys
 if [ -d "keys" ]; then
     cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
-    cp -vf keys/*.pem "$TARGET_ROOT_DIR/etc/apk/keys/" 2>/dev/null || true
 fi
 
 # ============================================
 # 步骤 6: 执行 make image
 # ============================================
 echo "🚀 开始编译镜像..."
+echo "最终使用 Profile: '$PROFILE'"
 
-# 如果外部没传 PROFILE，armsr 默认使用 "Default" 或者不传；传了则用外部参数
-BUILD_PROFILE="${PROFILE}"
-if [ -z "$BUILD_PROFILE" ] || [ "$BUILD_PROFILE" = "generic" ]; then
-    # 在 25.12 armsr 下，Default 代表 Generic EFI Boot
-    BUILD_PROFILE="Default"
+# 构建 make 命令参数数组
+MAKE_ARGS=("image")
+if [ -n "$PROFILE" ]; then
+    MAKE_ARGS+=("PROFILE=$PROFILE")
 fi
+MAKE_ARGS+=("PACKAGES=$PACKAGES")
+MAKE_ARGS+=("FILES=files")
+MAKE_ARGS+=("ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE")
 
-echo "使用 Profile: $BUILD_PROFILE"
-
-make image PROFILE="$BUILD_PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
+# 执行编译
+make "${MAKE_ARGS[@]}"
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

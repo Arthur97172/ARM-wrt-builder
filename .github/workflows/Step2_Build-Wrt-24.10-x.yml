@@ -1,4 +1,4 @@
-name: 💿 Step2_Build-Immortalwrt-or-Wrt-24.10.x
+name: 💿 Step2_Build-ARM-Wrt-24.10.x
 on:
   repository_dispatch:
   workflow_dispatch:

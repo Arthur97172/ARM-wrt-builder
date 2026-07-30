@@ -179,7 +179,7 @@ jobs:
           exit 1
         fi
 
-    - name: 🧱 构建Wrt-rootfs
+    - name: 🧱 构建${{ env.FINAL_LUCI_VER }}-rootfs file
       working-directory: ./imagebuilder
       run: bash ./build24.sh
 

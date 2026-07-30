@@ -1,4 +1,4 @@
-name: 💿 Step1_Build-Rootfs-release-Wrt-24.10.x
+name: 💿 Step1_Build-Rootfs-ARM-Wrt-24.10.x
 
 on:
   workflow_dispatch:

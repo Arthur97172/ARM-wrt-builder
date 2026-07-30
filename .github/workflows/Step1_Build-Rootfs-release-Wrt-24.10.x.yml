@@ -65,6 +65,8 @@ jobs:
     - name: ⚙️ 设置可执行权限
       run: | 
         chmod +x arm64/build24.sh
+        chmod +x arm64/openwrt-repositories.conf
+        chmod +x arm64/immortalwrt-repositories.conf
         chmod +x shell/*.sh
 
     - name: ⚙️ 设置IP、网关和版本号
@@ -119,9 +121,13 @@ jobs:
       run: |
         # ⚠️ 确保这里复制了 repositories.conf
         cp arm64/{build24.sh,Makefile} imagebuilder/
-        # 如果你的 repositories.conf 在根目录或 arm64 目录下，请确保路径正确
-        [ -f "repositories.conf" ] && cp repositories.conf imagebuilder/ || cp arm64/repositories.conf imagebuilder/
-        
+        if [ "${{ env.FINAL_WRT }}" = "openwrt" ]; then
+          cp rockchip/openwrt-repositories.conf imagebuilder/repositories.conf
+          cat shell/openwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
+        else
+          cp rockchip/immortalwrt-repositories.conf imagebuilder/repositories.conf
+          cat shell/immortalwrt-custom-packages.sh >> imagebuilder/custom-packages.sh
+        fi 
         cp shell/{prepare-packages.sh,custom-packages.sh} imagebuilder/
         find files/packages/ -name "*.ipk" -exec cp {} imagebuilder/packages/ \;
         

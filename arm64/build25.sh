@@ -318,6 +318,29 @@ if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
 fi
 
 # ============================================
+echo "🛠️ 正在预准备 APK 数据库路径..."
+
+# 1. 确保各种可能的目标根目录（包括 root-generic 和 root-armsr 等）下都建有 lib/apk/db 目录
+# 这样无论 Makefile 推导出的 rootfs 叫什么，apk 工具都能找到路径上锁
+mkdir -p build_dir/target-*/root-generic/lib/apk/db 2>/dev/null || true
+mkdir -p build_dir/target-*/root-generic/var/lib/apk 2>/dev/null || true
+mkdir -p build_dir/target-*/root-*/lib/apk/db 2>/dev/null || true
+
+# 如果 build_dir 还没建立，预先创建通用的路径
+mkdir -p "build_dir/target-aarch64_generic_musl/root-generic/lib/apk/db"
+
+# 2. 将本地公钥放进 files 目录，以便打包进最终系统
+mkdir -p files/etc/apk/keys
+if [ -d "keys" ]; then
+    cp -vf keys/*.pem files/etc/apk/keys/ 2>/dev/null || true
+fi
+
+# ============================================
+# 步骤6: 执行 make image (使用指定 PROFILE=generic)
+# ============================================
+echo "🚀 开始编译镜像 (PROFILE=generic)..."
+
+# ============================================
 # 步骤6: 执行 make image
 # ============================================
 make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"

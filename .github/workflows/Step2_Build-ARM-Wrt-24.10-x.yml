@@ -317,10 +317,6 @@ jobs:
           curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
             https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-armsr-armv8-generic-rootfs.tar.gz
 
-          # 2. 下载 Step1 预留的 info.txt 文件
-          curl -L -o info.txt \
-            https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/info.txt || true
-
       - name: 🔍 查找${{ env.FINAL_WRT }}-rootfs.tar.gz所在路径
         id: find_rootfs
         run: |
@@ -381,7 +377,6 @@ jobs:
         uses: softprops/action-gh-release@v2.2.1
         with:
           tag_name: ${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}
-          body: ${{ env.ROUTER_INFO }}
           files: |
             ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz
         env:

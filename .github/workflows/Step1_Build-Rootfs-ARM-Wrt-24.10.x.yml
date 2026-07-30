@@ -186,7 +186,7 @@ jobs:
           exit 1
         fi
 
-    - name: 🧱 构建${{ env.FINAL_LUCI_VER }}-rootfs file
+    - name: 🧱 构建 ${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-rootfs 文件
       working-directory: ./imagebuilder
       run: bash ./build24.sh
 
@@ -198,7 +198,7 @@ jobs:
 
           📡 ------------------------------路由器后台信息------------------------------
           
-          📌 版本： ${{ env.FINAL_LUCI_VER }}-ARM-${{ env.FINAL_LUCI_VER }}
+          📌 版本： ${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}
 
           🧠 内核： Please Login to → ${{ env.FINAL_LUCI_VER }} → System → Amlogic Service → Replace the Kernel
           

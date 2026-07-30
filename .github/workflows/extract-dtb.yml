@@ -1,97 +1,212 @@
-name: 📦 Auto Extract and Release DTB & Profile
+name: 💿 Step1_Build-Rootfs-release-Wrt
 
 on:
-  workflow_dispatch: # 在 GitHub 页面手动触发时显示选项
+  workflow_dispatch:
     inputs:
-      source_repo:
-        description: '请选择要提取 DTB 的源固件仓库'
+      luci_version:
+        description: "选择luci版本"
         required: true
-        default: 'naoki66'
+        default: "24.10.8"
         type: choice
         options:
-          - 'naoki66 (naoki66/ImmortalWrt-for-Gemtek-XR1710G)'
-          - 'SongOfLightAndShadow (SongOfLightAndShadow/immortalwrt-xr1710g-las)'
+          - '24.10.0'
+          - '24.10.1'
+          - '24.10.2'
+          - '24.10.3'
+          - '24.10.4' 
+          - '24.10.5' 
+          - '24.10.6'
+          - '24.10.7'         
+          - '24.10.8'            
+      network_settings:
+        description: "请选择初始网络配置"
+        required: true
+        default: 'static'
+        type: choice
+        options:
+          - 'static'
+          - 'dhcp'
+      ipaddr:
+        description: "请设置软路由的管理地址,格式:192.168.x.1"
+        required: true
+        default: '192.168.10.1'
+      gateway:
+        description: '请输入默认网关'
+        required: true
+        default: '192.168.10.1'
 
-permissions:
-  contents: write
+env:
+  VERSION: ${{ inputs.luci_version }}
 
 jobs:
-  extract-and-release:
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-24.04
+    # 关键：添加写入权限，解决 403 报错
+    permissions:
+      contents: write
+
     steps:
-      - name: 检出当前仓库
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: 安装 U-Boot 工具与设备树编译器
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y u-boot-tools device-tree-compiler wget jq
+    - name: ⚙️ 设置可执行权限
+      run: | 
+        chmod +x arm64/build24.sh
+        chmod +x shell/*.sh
 
-      - name: 自动获取并下载选定仓库的最新版本 sysupgrade.itb 固件
-        run: |
-          SELECTED="${{ github.event.inputs.source_repo }}"
+    - name: ⚙️ 设置IP、网关和版本号
+      run: |
+        CONFIG_PATH="./files/etc/uci-defaults/99-custom.sh"
+        echo "当前网络配置路径: $CONFIG_PATH"
+        
+        # 1. 替换版本号占位符
+        sed -i "s/版本号/${{ env.VERSION }}/g" "$CONFIG_PATH"
+        [ -f "./files/etc/banner" ] && sed -i "s/版本号/${{ env.VERSION }}/g" "./files/etc/banner"
+
+        # 2. 网络逻辑配置 (关键修改点：不再删除行，改用关键词替换)
+        if [ "${{ inputs.network_settings }}" = "static" ]; then
+           echo "模式：静态IP (旁路由)"
+           # 将脚本内默认的 192.168.10.1 替换为用户输入的 IP
+           sed -i "s/192.168.10.1/${{ inputs.ipaddr }}/g" "$CONFIG_PATH"
+           
+           # 在设置 IP 的代码行后，动态插入网关和 DNS 设置
+           sed -i "/uci set network.lan.ipaddr/a \        uci set network.lan.gateway='${{ inputs.gateway }}'\n        uci set network.lan.dns='${{ inputs.gateway }}'" "$CONFIG_PATH"
+        else
+           echo "模式：DHCP / 默认模式 (主路由)"
+           # 保持原脚本逻辑：单网口自动 DHCP，多网口保持 192.168.10.1
+        fi
+
+        # 3. 替换脚本末尾的描述信息
+        sed -i "s/VERXXXX/${{ env.VERSION }}/g" "$CONFIG_PATH"
+        
+        echo "✅ 配置修改完成，输出预览："
+        cat "$CONFIG_PATH"
+
+    - name: 🛠️ 安装依赖
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libncurses5-dev zstd curl unzip tree
+
+    - name: ⏬ 下载 ImageBuilder
+     # 必须在这里添加这个 env 块
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        BUILD_VER="${{ inputs.build_version }}"
+        REPO="${{ github.repository }}"
+        TAG="iStoreOS-Imagebuilder"
+        TARGET_SUFFIX="istoreos-imagebuilder-armsr-armv8.Linux-x86_64.tar.zst"
+
+        if [ "$BUILD_VER" = "latest" ]; then
+          echo "🔍 正在从你的 GitHub Release 中寻找最新备份..."
           
-          if [[ "$SELECTED" == *"naoki66"* ]]; then
-            REPO="naoki66/ImmortalWrt-for-Gemtek-XR1710G"
-            SHORT_NAME="naoki66"
-            
-            echo "🔍 正在获取 $REPO 的最新发布版本..."
-            API_URL="https://api.github.com/repos/$REPO/releases/latest"
-            DOWNLOAD_URL=$(curl -sL $API_URL | jq -r '.assets[] | select(.name | contains("squashfs-sysupgrade.itb")) | .browser_download_url' | head -n 1)
-            
-            if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-              DOWNLOAD_URL="https://github.com/naoki66/ImmortalWrt-for-Gemtek-XR1710G/releases/latest/download/immortalwrt-airoha-an7581-gemtek-xr1710g-squashfs-sysupgrade.itb"
-            fi
-          else
-            REPO="SongOfLightAndShadow/immortalwrt-xr1710g-las"
-            SHORT_NAME="SongOfLightAndShadow"
-            
-            echo "🔍 正在分析 $REPO 所有的 Releases 以锁定最新含版本号的固件..."
-            RELEASES_API="https://api.github.com/repos/$REPO/releases?per_page=5"
-            DOWNLOAD_URL=$(curl -sL "$RELEASES_API" | jq -r '.[].assets[] | select(.name | contains("squashfs-sysupgrade.itb")) | .browser_download_url' | head -n 1)
-            
-            if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-              LATEST_TAG=$(curl -sL "https://api.github.com/repos/$REPO/releases" | jq -r '.[0].tag_name')
-              if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" != "null" ]; then
-                DOWNLOAD_URL="https://github.com/$REPO/releases/download/${LATEST_TAG}/immortalwrt-airoha-an7581-gemtek_xr1710g-ubi-squashfs-sysupgrade.itb"
-              else
-                DOWNLOAD_URL="https://github.com/SongOfLightAndShadow/immortalwrt-xr1710g-las/releases/download/v1.0.3/immortalwrt-airoha-an7581-gemtek_xr1710g-ubi-squashfs-sysupgrade.itb"
-              fi
-            fi
+          # 获取资产列表 -> 过滤出 imagebuilder 文件 -> 按名称倒序排序 -> 取第一个
+          LATEST_FILE=$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name' | grep "$TARGET_SUFFIX" | sort -r | head -n 1)
+          
+          if [ -z "$LATEST_FILE" ]; then
+            echo "❌ 错误：在 Release 标签 $TAG 下没找到任何备份文件，请检查同步 Workflow 是否成功运行过。"
+            exit 1
           fi
           
-          echo "📥 最终确定的最新固件下载链接: $DOWNLOAD_URL"
-          wget -q --show-progress -O firmware-sysupgrade.itb "$DOWNLOAD_URL"
+          echo "✅ 找到最新的备份文件: $LATEST_FILE"
+          URL="https://github.com/$REPO/releases/download/$TAG/$LATEST_FILE"
+        else
+          echo "固定版本模式：准备下载 $BUILD_VER 备份"
+          URL="https://github.com/$REPO/releases/download/$TAG/${BUILD_VER}-${TARGET_SUFFIX}"
+        fi
+
+        echo "正在下载: $URL"
+        # 使用 -f 确保如果文件不存在时报错停止，而不是下载一个错误页面
+        curl -Lf -o imagebuilder.tar.zst "$URL"
+        
+        # 解压
+        tar --use-compress-program=unzstd -xvf imagebuilder.tar.zst
+        # 这里的解压目录匹配官方默认生成的文件夹名
+        mv istoreos-imagebuilder-* imagebuilder
+
+    - name: 🔄 复制并设置必备文件
+      run: |
+        # ⚠️ 确保这里复制了 repositories.conf
+        cp arm64/{iso_build24.sh,Makefile} imagebuilder/
+        # 如果你的 repositories.conf 在根目录或 arm64 目录下，请确保路径正确
+        [ -f "repositories.conf" ] && cp repositories.conf imagebuilder/ || cp arm64/repositories.conf imagebuilder/
+        
+        cp shell/{prepare-packages.sh,custom-packages.sh} imagebuilder/
+        find files/packages/ -name "*.ipk" -exec cp {} imagebuilder/packages/ \;
+        
+        mkdir -p imagebuilder/files/etc/{uci-defaults,banner1}
+        cp files/etc/uci-defaults/99-custom.sh imagebuilder/files/etc/uci-defaults/
+        cp files/etc/banner imagebuilder/files/etc/banner1/
+        cp files/etc/rc.local imagebuilder/files/etc/
+        mkdir -p imagebuilder/files/etc/opkg
+        cp -r files/customfeeds/* imagebuilder/files/etc/opkg/ 2>/dev/null || true
+        # 验证信息
+        ls -l imagebuilder/files/etc/opkg/customfeeds.conf && echo "已拷贝 customfeeds.conf"
+
+        cd imagebuilder
+        sed -i 's/# CONFIG_TARGET_ROOTFS_TARGZ is not set/CONFIG_TARGET_ROOTFS_TARGZ=y/' .config
+        sed -i "s|CONFIG_TARGET_ROOTFS_SQUASHFS=.*|# CONFIG_TARGET_ROOTFS_SQUASHFS is not set|g" .config
+        sed -i "s|CONFIG_TARGET_IMAGES_GZIP=.*|# CONFIG_TARGET_IMAGES_GZIP is not set|g" .config
+
+    - name: ⚙️ 动态获取 Kmod 哈希并更新配置
+      run: |
+        BUILD_VER="${{ env.VERSION }}"
+        # 确保基础路径正确（ARM 架构路径）
+        BASE_URL="https://downloads.openwrt.org/releases/${BUILD_VER}/targets/armsr/armv8/kmods/"
+        
+        echo "正在从 $BASE_URL 获取最新的内核哈希..."
+        KMOD_DIR=$(curl -sL $BASE_URL | grep -oE "[0-9.-]+-[a-f0-9]{32}" | head -n 1)
+        
+        if [ -n "$KMOD_DIR" ]; then
+          FULL_KMOD_URL="${BASE_URL}${KMOD_DIR}"
+          echo "✅ 成功匹配 kmods 路径: $FULL_KMOD_URL"
           
-          # 写入环境变量供后续步骤使用
-          echo "SOURCE_NAME=$SHORT_NAME" >> $GITHUB_ENV
+          # 1. 检查文件是否存在
+          TARGET_CONF="imagebuilder/repositories.conf"
+          if [ ! -f "$TARGET_CONF" ]; then
+            echo "❌ 错误: $TARGET_CONF 不存在，请检查 '复制必备文件' 步骤"
+            exit 1
+          fi
 
-      - name: 给脚本添加执行权限
-        run: chmod +x extract-dtb.sh
+          # 2. 替换版本号 (支持占位符 VERSION_PLACEHOLDER 或硬编码的 24.10.4)
+          sed -i "s|VERSION_PLACEHOLDER|${BUILD_VER}|g" "$TARGET_CONF"
+          sed -i "s|24.10.4|${BUILD_VER}|g" "$TARGET_CONF"
+          
+          # 3. 替换 Kmod 整行 (最稳妥：直接匹配包含 openwrt_kmods 的行并重写)
+          sed -i "s|^src/gz openwrt_kmods.*|src/gz openwrt_kmods $FULL_KMOD_URL|g" "$TARGET_CONF"
+          
+          echo "--- 更新后的配置文件内容 (预览) ---"
+          cat "$TARGET_CONF"
+        else
+          echo "❌ 无法获取 Kmod 哈希，请检查官方源是否存在该版本: $BASE_URL"
+          exit 1
+        fi
 
-      - name: 执行设备树与 Profile 提取
-        run: ./extract-dtb.sh "${{ env.SOURCE_NAME }}"
+    - name: 🧱 构建iStoreOS-rootfs
+      working-directory: ./imagebuilder
+      run: bash ./iso_build24.sh
 
-      - name: 发布 DTB, DTS 与 Profile 配置到 Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest-dtb
-          name: "Gemtek XR1710G 提取版 DTB 与 Profile 汇总"
-          body: |
-            这是自动提取/生成的原始设备树文件（.dtb / .dts）以及编译 Profile 配置文件（.mk）。
+    - name: 🚀 上传到 Release
+      uses: softprops/action-gh-release@v2.2.1
+      with:
+        tag_name: iStoreOS-ARM-${{ env.VERSION }}-RELEASE-${{ inputs.network_settings }}
+        body: |
 
-            - **文件说明**:
-              - `*_gemtek_xr1710g.dtb`: 提取自对应仓库固件的设备树二进制文件。
-              - `*_gemtek_xr1710g.dts`: 提取自对应仓库固件的设备树源码文件。
-              - `*_an7581.mk`: 生成/提取的 Profile 配置文件（内含 `Device/gemtek_xr1710g-ubi` 定义）。
-            - **提取时间**: 2026-07-28
-            - **使用方法**: 将 `.dts` 放入 ImageBuilder 的 dts 目录，并将 `.mk` 中的相应 Profile 代码复制到你本地 ImageBuilder 的 `an7581.mk` 中即可。
-          draft: false
-          prerelease: false
-          files: |
-            output/*.dtb
-            output/*.dts
-            output/*.mk
-          overwrite_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          📡 ------------------------------路由器后台信息------------------------------
+          
+          📌 版本： iStoreOS-ARM-${{ env.VERSION }}
+
+          🧠 内核： Please Login to iStoreOS → System → Amlogic Service → Replace the Kernel
+          
+          🧩 集成： 包含了基础系统组件、驱动、网络工具、容器支持、LuCI界面及插件等
+          
+          👤 用户名： root
+          
+          🔒 密码： 无
+          
+          🌐 初始IP： ${{ inputs.ipaddr }}
+
+          
+        files: imagebuilder/bin/targets/armsr/armv8/*generic-rootfs.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

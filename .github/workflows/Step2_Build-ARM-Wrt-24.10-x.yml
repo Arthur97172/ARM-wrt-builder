@@ -315,7 +315,7 @@ jobs:
           
           # 1. 下载 rootfs 包
           curl -L -o bin/targets/armsr/armv8/openwrt-armvirt-64-default-rootfs.tar.gz \
-            https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-armsr-armv8-generic-rootfs.tar.gz
+            https://github.com/${{ github.actor }}/ARM-wrt-builder/releases/download/${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}/${{ env.FINAL_WRT }}-${{ env.FINAL_LUCI_VER }}-armsr-armv8-generic-rootfs-Docker-${{ env.DOCKER }}.tar.gz
 
       - name: 🔍 查找${{ env.FINAL_WRT }}-rootfs.tar.gz所在路径
         id: find_rootfs

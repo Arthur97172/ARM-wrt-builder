@@ -206,16 +206,13 @@ ifeq ($(CONFIG_USE_APK),)
 		$(OPKG) update >&2 || true; \
 	fi
 else
-	# TARGET_DIR 每次都被 rm -rf，必须先初始化 apk 数据库
-	mkdir -p $(TARGET_DIR)/tmp
-	$(APK) add --initdb || true
-
 	if [ -d "$(PACKAGE_DIR)" ] && ( \
 			[ ! -f "$(PACKAGE_DIR)/packages.adb" ] || \
 			[ "`find $(PACKAGE_DIR) -cnewer $(PACKAGE_DIR)/packages.adb`" ] ); then \
 		echo "Package list missing or not up-to-date, generating it." >&2 ;\
 		$(MAKE) package_index; \
 	else \
+		mkdir -p $(TARGET_DIR)/tmp; \
 		$(APK) update >&2 || true; \
 	fi
 endif
@@ -236,8 +233,6 @@ ifeq ($(CONFIG_USE_APK),)
 	$(OPKG) install $(firstword $(wildcard $(LINUX_DIR)/kernel_*.ipk $(PACKAGE_DIR)/kernel_*.ipk))
 	$(OPKG) install $(BUILD_PACKAGES)
 else
-	mkdir -p $(TARGET_DIR)/tmp
-	$(APK) add --initdb || true
 	$(APK) add --no-scripts $(firstword $(wildcard $(LINUX_DIR)/libc-*.apk $(PACKAGE_DIR)/libc-*.apk))
 	$(APK) add --no-scripts $(firstword $(wildcard $(LINUX_DIR)/kernel-*.apk $(PACKAGE_DIR)/kernel-*.apk))
 	$(APK) add --no-scripts $(BUILD_PACKAGES)

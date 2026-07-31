@@ -309,17 +309,17 @@ fi
 # 改方案: 直接 sed 改 .config 把 CONFIG_SIGNATURE_CHECK 设为空,
 # parent 和 child 都读到空,apk add 拿到 --allow-untrusted。
 # ============================================
-#if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
-#    cp .config .config.bak.imm
-#    sed -i 's/^CONFIG_SIGNATURE_CHECK=y$/CONFIG_SIGNATURE_CHECK=/' .config
-#    echo "🔓 .config: CONFIG_SIGNATURE_CHECK 已置空(原值备份到 .config.bak.imm)"
-#    grep -n '^CONFIG_SIGNATURE_CHECK' .config
-#fi
-
-if [ -f Makefile ]; then
-    # 替换其中的默认签名检查开关，加上未信任签名放行参数
-    sed -i 's/--keys-dir/--allow-untrusted --keys-dir/g' Makefile 2>/dev/null || true
+if [ -f .config ] && grep -q "^CONFIG_SIGNATURE_CHECK=y" .config; then
+    cp .config .config.bak.imm
+    sed -i 's/^CONFIG_SIGNATURE_CHECK=y$/CONFIG_SIGNATURE_CHECK=/' .config
+    echo "🔓 .config: CONFIG_SIGNATURE_CHECK 已置空(原值备份到 .config.bak.imm)"
+    grep -n '^CONFIG_SIGNATURE_CHECK' .config
 fi
+
+#if [ -f Makefile ]; then
+#    # 替换其中的默认签名检查开关，加上未信任签名放行参数
+#    sed -i 's/--keys-dir/--allow-untrusted --keys-dir/g' Makefile 2>/dev/null || true
+#fi
 
 # ============================================
 # 步骤6: 执行 make image

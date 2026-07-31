@@ -138,7 +138,8 @@ jobs:
     - name: 🔄 复制并设置必备文件
       run: |
         # ⚠️ 确保这里复制了 repositories.conf
-        cp arm64/{build25.sh,Makefile} imagebuilder/
+        #cp arm64/{build25.sh,Makefile} imagebuilder/
+        cp arm64/build25.sh imagebuilder/
         if [ "${{ env.FINAL_WRT }}" = "openwrt" ]; then
           cp arm64/openwrt-repositories imagebuilder/repositories
           cat shell/apk-openwrt-custom-packages.sh >> imagebuilder/apk-custom-packages.sh

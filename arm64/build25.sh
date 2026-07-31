@@ -3,7 +3,7 @@
 # 在 imagebuilder 目录下运行
 
 # --- 接收外部参数 ---
-# 与 build24.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
+# 与 build25.sh 约定一致:$1=PROFILE, $2=ROOTFS_PARTSIZE
 ROOTFS_PARTSIZE=${2:-"2048"}
 INCLUDE_DOCKER=${INCLUDE_DOCKER:-"no"}
 
@@ -324,7 +324,8 @@ fi
 # ============================================
 # 步骤6: 执行 make image
 # ============================================
-make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="$ROOTFS_PARTSIZE"
+ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}
+make image PROFILE=generic PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
 
 if [ $? -ne 0 ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') - Error: Build failed!"

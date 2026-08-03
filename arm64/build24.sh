@@ -139,15 +139,12 @@ PACKAGES="$PACKAGES luci-app-ddns luci-i18n-ddns-zh-cn"
 # 合并imm仓库以外的第三方插件
 PACKAGES="$PACKAGES $CUSTOM_PACKAGES"
 
+# ============================================
 # [Docker 插件]
 if [ "$INCLUDE_DOCKER" = "yes" ]; then
     echo "🐳 Docker enabled, adding docker packages"
     PACKAGES="$PACKAGES docker docker-compose luci-app-dockerman luci-i18n-dockerman-zh-cn"
 fi
-
-# 构建镜像
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Building image with the following packages:"
-echo "$PACKAGES"
 
 # 若构建openclash 则添加内核
 if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
@@ -157,13 +154,30 @@ if echo "$PACKAGES" | grep -q "luci-app-openclash"; then
     META_URL="https://raw.githubusercontent.com/vernesong/OpenClash/core/master/meta/clash-linux-arm64.tar.gz"
     wget -qO- $META_URL | tar xOvz > files/etc/openclash/core/clash_meta
     chmod +x files/etc/openclash/core/clash_meta
-    # Download GeoIP and GeoSite
+    # 下载 GeoIP and GeoSite 数据库
     wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat -O files/etc/openclash/GeoIP.dat
     wget -q https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat -O files/etc/openclash/GeoSite.dat
+    echo "✅ openclash预装GeoData 数据库完成！"
 else
     echo "⚪️ 未选择 luci-app-openclash"
 fi
 
+# 若构建nikki 则添加GeoIP and GeoSite
+if echo "$PACKAGES" | grep -q "luci-app-nikki"; then
+    # 创建目录
+    mkdir -p files/etc/nikki/run/
+    # 下载 GeoIP and GeoSite 数据库
+    wget -q https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat -O files/etc/nikki/run/GeoIP.dat
+    wget -q https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat -O files/etc/nikki/run/GeoSite.dat
+    chmod 755 files/etc/nikki/run/*
+    echo "✅ nikki预装GeoData 数据库完成！"
+else
+    echo "⚪️ 未选择 luci-app-nikki"
+fi
+
+# 构建镜像
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Building image with the following packages:"
+echo "$PACKAGES"
 
 #make image PROFILE=$PROFILE PACKAGES="$PACKAGES" FILES="/home/build/immortalwrt/files" ROOTFS_PARTSIZE=$ROOTFS_PARTSIZE
 ROOTFS_PARTSIZE=${ROOTFS_PARTSIZE:-"2048"}

@@ -27,8 +27,9 @@ PACKAGES=""
 
 # [核心系统 - 不含 libc/libgcc,由 base 系统提供]
 PACKAGES="$PACKAGES base-files uci ubus dropbear logd mtd bash htop curl wget ca-bundle ca-certificates"
-PACKAGES="$PACKAGES dnsmasq-full firewall4 nftables kmod-nft-offload"
-PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls wpad-openssl libustream-openssl"
+PACKAGES="$PACKAGES -dnsmasq dnsmasq-full firewall4 nftables kmod-nft-offload"
+PACKAGES="$PACKAGES -odhcpd odhcpd-ipv6only odhcp6c"
+PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls wpad-openssl libustream-openssl luci-proto-ppp luci-proto-ipv6"
 
 # [硬件驱动]
 PACKAGES="$PACKAGES -kmod-ath10k-sdio kmod-ath10k"

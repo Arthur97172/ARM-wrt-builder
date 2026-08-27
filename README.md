@@ -59,7 +59,7 @@
 | rk3528   | HLink-H28K, Radxa-E20C, H96-Max-M2, HK1-Rbox-K8S, HT2, CD1000, P51(X88-Pro-13) |
 | rk3328   | BeikeYun, Chainedbox-L1-Pro, Station-M1, Bqeel-MVR9, Renegade/Firefly |
 | rk3318   | RX3318-Box |
-| h6       | Vplus, Tanix-TX6, TQC-A01 |
+| h6       | Vplus, Tanix-TX6, TX6-H, T95-max, TQC-A01 |
 | h618     | OrangePi-Zero3, H618-DevBoard(PCDN), Vontar-h618, BT-100M, BT-1000M, PaiNet-P3, X98H |
 
 

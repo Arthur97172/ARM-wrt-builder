@@ -29,7 +29,8 @@ PACKAGES=""
 PACKAGES="$PACKAGES base-files uci ubus dropbear logd mtd bash htop curl wget ca-bundle ca-certificates"
 PACKAGES="$PACKAGES -dnsmasq dnsmasq-full firewall4 nftables kmod-nft-offload nano"
 PACKAGES="$PACKAGES -odhcpd odhcpd-ipv6only odhcp6c"
-PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls -wpad-mbedtls -wpad-openssl wpad-mesh-openssl libustream-openssl luci-proto-ppp luci-proto-ipv6"
+PACKAGES="$PACKAGES -libustream-mbedtls -libustream-wolfssl libustream-openssl"
+PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls -wpad-mbedtls -wpad-openssl wpad-mesh-openssl luci-proto-ppp luci-proto-ipv6"
 PACKAGES="$PACKAGES kmod-tcp-bbr"
 
 # [硬件驱动]

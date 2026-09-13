@@ -63,6 +63,9 @@ CUSTOM_PACKAGES="$CUSTOM_PACKAGES rtp2httpd luci-app-rtp2httpd luci-i18n-rtp2htt
 # run插件安装工具 (run)
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-run"
 
+# Turboacc网络加速 (turboacc)
+CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-turboacc luci-i18n-turboacc-zh-cn"
+
 # Netspeedtest网速测试 (netspeedtest)
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-netspeedtest luci-i18n-netspeedtest-zh-cn"
 

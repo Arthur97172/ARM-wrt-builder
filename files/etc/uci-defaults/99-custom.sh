@@ -1,7 +1,7 @@
 #!/bin/sh
 # 仅首次运行Wrt时，会执行以下脚本。重启后消失
 
-LOGFILE="/etc/config/uci-defaults-log.txt"
+LOGFILE="/tmp/uci-defaults-log.txt"
 echo "Starting 99-custom.sh at $(date)" >>$LOGFILE
 
 # 基础设置
@@ -50,6 +50,9 @@ if [ "$count" -eq 1 ]; then
     uci set network.lan.proto='dhcp'
     uci delete network.lan.ipaddr
     uci delete network.lan.netmask
+    uci delete network.lan.gateway     
+    uci delete network.lan.dns
+    uci commit network
 elif [ "$count" -gt 1 ]; then
     # 多网口配置 WAN
     uci set network.wan=interface
@@ -61,6 +64,13 @@ elif [ "$count" -gt 1 ]; then
     if [ -n "$section" ]; then
         uci -q delete "network.$section.ports"
         for port in $lan_ifnames; do uci add_list "network.$section.ports"="$port"; done
+    fi
+
+    # PPPoE 逻辑
+    if [ "$enable_pppoe" = "yes" ]; then
+        uci set network.wan.proto='pppoe'
+        uci set network.wan.username="$pppoe_account"
+        uci set network.wan.password="$pppoe_password"
     fi
 fi
 

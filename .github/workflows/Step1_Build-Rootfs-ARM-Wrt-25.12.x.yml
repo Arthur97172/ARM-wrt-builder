@@ -105,9 +105,12 @@ jobs:
            sed -i "s/__IPADDR__/${{ inputs.ipaddr }}/g" "$CONFIG_PATH" 
            
            # 在设置 IP 的代码行后，动态插入网关和 DNS 设置
-           sed -i "/uci set network.lan.ipaddr/a \        uci set network.lan.gateway='${{ inputs.gateway }}'\n        uci set network.lan.dns='${{ inputs.gateway }}'" "$CONFIG_PATH"
+           sed -i "/uci set network.lan.ipaddr/a \\
+           uci set network.lan.gateway='${{ inputs.gateway }}'\\
+           uci set network.lan.dns='${{ inputs.gateway }}'" "$CONFIG_PATH"
         else
            echo "模式：DHCP / 默认模式 (主路由)"
+           sed -i "s/__IPADDR__/${{ inputs.ipaddr }}/g" "$CONFIG_PATH"
            # 保持原脚本逻辑：单网口自动 DHCP，多网口保持 192.168.10.1
         fi
 

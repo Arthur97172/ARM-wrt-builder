@@ -26,14 +26,6 @@ on:
           - '24.10.6'        
           - '24.10.7'       
           - '24.10.8'  
-      network_settings:
-        description: "请选择初始网络配置（先确保St1有执行）"
-        required: true
-        default: "dhcp"
-        type: choice
-        options:
-          - static
-          - dhcp
       openwrt_board:
         description: "请选择设备型号（默认当前常见设备）"
         required: true
@@ -392,7 +384,7 @@ jobs:
       - name: 🚀 上传到 Release
         uses: softprops/action-gh-release@v2.2.1
         with:
-          tag_name: ${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}-${{ inputs.network_settings }}
+          tag_name: ${{ env.FINAL_WRT }}-ARM-${{ env.FINAL_LUCI_VER }}-${{ inputs.openwrt_rootfs }}
           files: |
             ${{ env.PACKAGED_OUTPUTPATH }}/*.img.gz
         env:

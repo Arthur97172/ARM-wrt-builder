@@ -62,6 +62,7 @@ PACKAGES="$PACKAGES -odhcpd odhcpd-ipv6only"
 PACKAGES="$PACKAGES -libustream-mbedtls -libustream-wolfssl libustream-openssl"
 PACKAGES="$PACKAGES ip-full ipset iw ppp ppp-mod-pppoe -wpad-basic-mbedtls -wpad-mbedtls -wpad-openssl wpad-mesh-openssl luci-proto-ppp luci-proto-ipv6"
 PACKAGES="$PACKAGES kmod-tcp-bbr"
+PACKAGES="$PACKAGES tmux"
 
 # [硬件驱动 - 板载 PCIe]
 # 强制去重 ath10k 防止冲突；包含 Realtek 板载 2.5G (r8125) 和千兆 (r8169)

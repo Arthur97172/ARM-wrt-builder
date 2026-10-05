@@ -2,9 +2,6 @@
 # 24.10.x 第三方插件配置 (IPK 格式) - aarch64_generic 专用
 # 启用第三方插件时取消对应注释
 
-#Others - DO NOT REMOVE
-CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-cpufreq luci-i18n-cpufreq-zh-cn"
-
 # adguardhome广告拦截 (adguardhome)
 CUSTOM_PACKAGES="$CUSTOM_PACKAGES adguardhome luci-app-adguardhome luci-i18n-adguardhome-zh-cn"
 
